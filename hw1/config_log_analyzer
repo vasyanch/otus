@@ -1,0 +1,8 @@
+[Config_log_analyzer]
+report_size = 1000
+report_dir = ./reports
+log_dir = ./log
+logging_to_file = ./log_analyzer.log
+logging_level = DEBUG
+level_parse = 50
+

@@ -1,0 +1,5 @@
+[Config_log_analyzer]
+report_size = 500
+report_dir = ./test_dir
+logging_to_file = ./test_dir/test.log
+logging_level = ERROR

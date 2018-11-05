@@ -1,0 +1,7 @@
+[Config_log_analyzer]
+report_size = 1000
+report_dir = BAD
+log_dir = ./
+logging_to_file = ./test_dir/test.log
+logging_level = DEBUG
+level_parse = 50
