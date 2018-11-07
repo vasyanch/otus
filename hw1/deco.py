@@ -2,7 +2,6 @@
 # -*- coding: utf-8 -*-
 
 from functools import update_wrapper
-from functools import wraps
 
 
 def disable(fun):
@@ -11,74 +10,55 @@ def disable(fun):
     to this function. For example, to turn off memoization:
 
     >>> memo = disable
-
     '''
     return fun
 
 
-def decorator(fun):
+def decorator(deco):
     '''
     Decorate a decorator so that it inherits the docstrings
     and stuff from the function it's decorating.
     '''
-    @wraps(fun)
-    def wrapper(*args, **kwargs):
-        res = fun(*args, **kwargs)
-        return res
-
+    def wrapper(fun):
+        return update_wrapper(deco(fun), fun)
+    update_wrapper(wrapper, deco)
     return wrapper
 
 
+@decorator
 def countcalls(fun):
     '''Decorator that counts calls made to the function decorated.'''
-    
-    @wraps(fun)
     def wrapper(*args, **kwargs):
-        wrapper.calls += 1
-        res = fun(*args, **kwargs)
+        wrapper.calls = getattr(wrapper, 'calls', 0) + 1
         # print '{0} was called {1}-x'.format(fun.__name__, wrapper.calls)
-        return res
-    wrapper.calls = 0
+        return fun(*args, **kwargs)
     return wrapper
 
 
+@decorator
 def memo(fun):
     '''
     Memoize a function so that it caches all return values for
     faster future lookups.
     '''
     cash = {}
-    @wraps(fun)
     def wrapper(*args):
+        update_wrapper(wrapper, fun)
         if args in cash:
             return cash[args]
-        res = fun(*args)
-        if hasattr(fun, 'calls'):
-            wrapper.calls = fun.calls
-        cash[args] = res
+        res = cash[args] = fun(*args)
         return res
-    
     return wrapper
 
 
+@decorator
 def n_ary(fun):
     '''
     Given binary function f(x, y), return an n_ary function such
     that f(x, y, z) = f(x, f(y,z)), etc. Also allow f(x) = x.
     '''
-    def wrapper(*args):
-        end = len(args)
-        if end > 2:
-            i = end - 3
-            res = fun(args[end - 1], args[end - 2])
-            while i >= 0:
-                res = fun(args[i], res)
-                i -= 1
-            return res
-        elif end == 2:
-            return fun(args[0], args[1])
-        else:
-            return args[0]
+    def wrapper(x, *args):
+        return x if not args else fun(x, wrapper(*args))
     return wrapper
 
 
@@ -102,20 +82,18 @@ def trace(indent):
      <-- fib(3) == 3
 
     '''
-    
+
+    @decorator
     def deco(fun):
         fun.depth = 0
-        #@wraps(fun)
-        def wrapper(n):
-            print '{0} --> {1}({2})'.format(indent*fun.depth, fun.__name__, n)
-            if n > 1:
-                fun.depth += 1
-            res = fun(n)
-            if n > 1:
-                fun.depth -=1
-            print '{0}<-- {1}({2}) == {3}'.format(indent*fun.depth, fun.__name__, n, res)
+
+        def wrapper(*args):
+            print '{0} --> {1}({2})'.format(indent*fun.depth, fun.__name__, ','.join(map(repr, args)))
+            fun.depth += 1
+            res = fun(*args)
+            fun.depth -=1
+            print '{0}<-- {1}({2}) == {3}'.format(indent*fun.depth, fun.__name__, ','.join(map(repr, args)), res)
             return res
-        wrapper = update_wrapper(wrapper, fun)
         return wrapper
     return deco
 
