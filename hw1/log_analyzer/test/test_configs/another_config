@@ -1,7 +1,7 @@
 [Config_log_analyzer]
 report_size = 500
-report_dir = ./test_dir
-log_dir = ./test_dir
-logging_to_file = ./test_dir/test.log
+report_dir = ./test/test_dir
+log_dir = ./test/test_dir
+logging_to_file = ./test/test_dir/test.log
 logging_level = ERROR
 level_parse = 20

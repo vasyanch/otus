@@ -8,7 +8,6 @@
 #                     '$request_time';
 # sys.argv -> ['file_name.py', 'dir_log_nginx', 'config']
 
-import sys
 import re
 import gzip
 import json
@@ -26,7 +25,7 @@ config = {
     "REPORT_SIZE": 1000,
     "REPORT_DIR": "./reports",
     "LOG_DIR": "./log",
-    "LEVEL_PARSE": 10,
+    "LEVEL_PARSE": 50,
     "LOGGING_LEVEL": logging.DEBUG,
     "LOGGING_TO_FILE": None
 }
@@ -75,7 +74,7 @@ def parse_config(default_config, path):
                 if priority_config:
                     default_config[item[0].upper()] = priority_config[item[0]]
                 else:
-                    raise Exception, 'Bad option:{} in config file!'.format(item[0].upper())
+                    raise Exception
             return default_config
         except Exception:
             raise Exception, "Bad config!"
@@ -89,13 +88,13 @@ def find_log(dir_log_nginx):
     date = 0
     ex = None
     for file_ in os.listdir(dir_log_nginx):
-        f = re.match(r'nginx-access-ui.log-(?P<cur_date>\d{8})(\.(?P<ex>gz)|$)', file_)
+        f = re.match(r'nginx-access-ui.log-(?P<cur_date>\d{8})(\.(?P<cur_ex>gz)|$)', file_)
         if f:
-            cur_date, ex = datetime.strptime(f.group('cur_date'), '%Y%m%d'), f.group('ex')
+            cur_date, cur_ex = datetime.strptime(f.group('cur_date'), '%Y%m%d'), f.group('cur_ex')
             maximum = max(maximum, cur_date)
             if cur_date == maximum:
                 file_for_analyze = file_
-                date, ex = cur_date, ex
+                date, ex = cur_date, cur_ex
     return Log(file_for_analyze, date, ex) if file_for_analyze else None
 
 
@@ -176,6 +175,8 @@ def render_report(data_to_render_, report_path):
 
 
 def main(config):
+    logging.basicConfig(format='[%(asctime)s] %(levelname).1s %(message)s', level=config["LOGGING_LEVEL"],
+                        filename=config["LOGGING_TO_FILE"])
     file_log = find_log(config["LOG_DIR"])
     if file_log is None:
         logging.error('File_for_analyze is not found.')
@@ -189,18 +190,16 @@ def main(config):
     else:
         try:
             os.mkdir(config['REPORT_DIR'])
-        except:
+        except Exception:
             logging.error('Bad option:REPORT_DIR in config file!')
             return
     report_path = os.path.join(config['REPORT_DIR'], report)
     path_file_for_analyze = os.path.join(config["LOG_DIR"], file_log.file_for_analyze)
     raw_data, good_strings, all_strings, all_time = parse_log(path_file_for_analyze, file_log.ex)
-    print all_strings, good_strings
     if all_strings > 0:
         if Fraction(good_strings, all_strings) <= Fraction(config["LEVEL_PARSE"], 100):
-            logging.error('Could not parse more {0}% in {1}. \
-                            Try to check log format.'.format(config["LEVEL_PARSE"],
-                                                              path_file_for_analyze))
+            logging.error('Could not parse more {0}% in {1}. Try to check log format.'.
+                          format(config["LEVEL_PARSE"], path_file_for_analyze))
             return
     else:
         logging.error('{} file is empty!'.format(path_file_for_analyze))
@@ -217,8 +216,6 @@ if __name__ == "__main__":
     parser = create_parser()
     namespace = parser.parse_args()
     config = parse_config(config, namespace.config)  # type(namespace.config) -> str
-    logging.basicConfig(format='[%(asctime)s] %(levelname).1s %(message)s', level=config["LOGGING_LEVEL"],
-                        filename=config["LOGGING_TO_FILE"])
     try:
         main(config)
     except Exception:

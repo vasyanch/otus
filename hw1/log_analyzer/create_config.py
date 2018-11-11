@@ -21,3 +21,6 @@ def create_config(path):
 if __name__ == '__main__':
     path = './config_log_analyzer'
     create_config(path)
+    import os
+    print  os.path.join(os.path.dirname(os.path.abspath(__file__)), 'REPORT_DIR')
+    print os.path.join(os.path.dirname(os.path.abspath(__file__)), '/home')
