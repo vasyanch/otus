@@ -77,9 +77,9 @@ def parse_config(default_config, path):
                     raise Exception
             return default_config
         except Exception:
-            raise Exception, "Bad config!"
+            raise Exception("Bad config!")
     else:
-        raise Exception, "Bad path to config!"
+        raise Exception("Bad path to config!")
 
 
 def find_log(dir_log_nginx):
