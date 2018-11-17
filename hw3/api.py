@@ -39,11 +39,13 @@ GENDERS = {
 
 
 class Field(object):
+    __metaclass__ = abc.ABCMeta
 
     def __init__(self, nullable=False, required=False):
         self.required = required
         self.nullable = nullable
 
+    @abc.abstractmethod
     def check(self, value):
         return True if self.nullable else False
 
@@ -94,7 +96,7 @@ class PhoneField(Field):
 
     def check(self, value):
         ans = False
-        if isinstance(value, (int, str)):
+        if isinstance(value, (int, str, unicode)):
             value = str(value)
             if value:
                 if re.match(r'\d{11}$', value) and len(value) == self.max_length and value[0] == '7':
@@ -157,33 +159,39 @@ class ClientIDsField(Field):
 
 
 class Request(object):
+    __metaclass__ = abc.ABCMeta
+
     def __init__(self, **kwargs):
         for key in kwargs:
             new_key = '_{}'.format(key)
             self.__dict__[new_key] = kwargs[key]
 
     def is_valid(self):
+        invalid_fields = []
         for atr in self.__dict__.keys():
             value = self.__getattribute__(atr)
             instance = self.__getattribute__(atr.lstrip('_'))
             if instance.required and value is None:
-                raise AttributeError('{} is required!'.format(atr.lstrip('_')))
+                invalid_fields.append(atr.lstrip('_'))
             else:
                 if value is not None:
                     if instance.check(value):
                         self.__setattr__(atr.lstrip('_'), value)
                         self.__delattr__(atr)
                     else:
-                        raise AttributeError('{} is bad!'.format(atr.lstrip('_')))
+                        invalid_fields.append(atr.lstrip('_'))
                 else:  # value = None, required = False
                     self.__setattr__(atr.lstrip('_'), value)
                     self.__delattr__(atr)
-        return True
+        return invalid_fields if invalid_fields else True
 
 
 class ClientsInterestsRequest(Request):
     client_ids = ClientIDsField(required=True, nullable=False)
     date = DateField(required=False, nullable=True)
+
+    def __init__(self, client_ids=None, date=None):
+        super(ClientsInterestsRequest, self).__init__(client_ids=client_ids, date=date)
 
 
 class OnlineScoreRequest(Request):
@@ -194,13 +202,36 @@ class OnlineScoreRequest(Request):
     birthday = BirthDayField(required=False, nullable=True)
     gender = GenderField(required=False, nullable=True)
 
+    def __init__(self, first_name=None, last_name=None, email=None, phone=None, birthday=None, gender=None):
+        super(OnlineScoreRequest, self).__init__(first_name=first_name, last_name=last_name, email=email,
+                                                 phone=phone, birthday=birthday, gender=gender)
+
+    def is_valid(self):
+        invalid_fields = super(OnlineScoreRequest, self).is_valid()
+        if invalid_fields is not True:
+            return invalid_fields
+        invalid_fields = []
+        for i, j in (('phone', 'email'), ('first_name', 'last_name'), ('gender', 'birthday')):
+            if self.__dict__[i] is not None and self.__dict__[j] is not None:
+                return True
+            elif self.__dict__[i] is None and self.__dict__[j] is None:
+                invalid_fields.append(j)
+                invalid_fields.append(i)
+            else:
+                invalid_fields.append(j) if self.__dict__[i] else invalid_fields.append(i)
+        return invalid_fields
+
 
 class MethodRequest(Request):
     account = CharField(required=False, nullable=True)
     login = CharField(required=True, nullable=True)
     token = CharField(required=True, nullable=True)
     arguments = ArgumentsField(required=True, nullable=True)
-    method = CharField(required=True, nullable=False)
+    method = CharField(required=True, nullable=True)
+
+    def __init__(self, account=None, login=None, token=None, arguments=None, method=None):
+        super(MethodRequest, self).__init__(account=account, login=login, token=token, arguments=arguments,
+                                            method=method)
 
     @property
     def is_admin(self):
@@ -218,24 +249,45 @@ def check_auth(request):
 
 
 def method_handler(request, ctx, store):
-    response, code = None, None
-    return response, code
+    req = MethodRequest(**request['body'])
+    valid = req.is_valid()
+    if valid is not True:
+        return '({0}) this field(s) is bad'.format(' '.join(valid)), 422
+    if not check_auth(req):
+        return 'Forbidden', 403
+    return req.arguments, req.is_admin
 
 
 def clients_interests(request, ctx, store):
     response, code = {}, OK
-    user = MethodRequest(**request['body'])
-    user.is_valid()
-    method = ClientsInterestsRequest(**user.arguments)
-    method.is_valid()
-    ctx['nclients'] = len(method.client_ids)
-    for i in method.client_ids:
+    arguments, admin = method_handler(request, ctx, store)
+    if admin in (422, 403):
+        return arguments, admin
+    method = ClientsInterestsRequest(**arguments)
+    valid = method.is_valid()
+    if valid is not True:
+        return '({0}) this argument(s) is bad'.format(', '.join(valid)), 422
+    client_ids = list(method.client_ids)
+    ctx['nclients'] = len(client_ids)
+    for i in client_ids:
         response[i] = scoring.get_interests(store, None)
     return response, code
 
 
 def online_score(request, ctx, store):
-    response, code = None, None
+    response, code = {}, OK
+    arguments, admin = method_handler(request, ctx, store)
+    if admin in (422, 403):
+        return arguments, admin
+    method = OnlineScoreRequest(**arguments)
+    valid = method.is_valid()
+    if valid is not True:
+        return '({0}) this argument(s) is empty'.format(', '.join(valid)), 422
+    ctx['has'] = arguments.keys()
+    if admin:
+        response['score'] = 42
+    else:
+        response['score'] = scoring.get_score(store, **arguments)
     return response, code
 
 
