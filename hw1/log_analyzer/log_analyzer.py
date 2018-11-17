@@ -41,57 +41,38 @@ def create_parser():
 
 
 def parse_config(default_config, path):
-    
-    def check_option(outer_config, key, value):
-        check = 0
-        if key in ('report_size', 'level_parse') and re.match(r'\d+$', value) and \
-           ((key == 'report_size' and int(value) > 0) or (key == 'level_parse' and 0 < int(value) <= 100)):
-            outer_config[key] = int(value)
-            check = 1
-        elif (key == 'log_dir' and os.path.exists(value)) or (key in ('logging_to_file', 'report_dir')):
-            check = 1
-        elif key == 'logging_level' and value in ('INFO', 'DEBUG', 'ERROR'):
-            check = 1
-            if value == 'INFO':
-                outer_config[key] = logging.INFO
-            elif value == 'DEBUG':
-                outer_config[key] = logging.DEBUG
-            else:
-                outer_config[key] = logging.ERROR
-        else:
-            pass
-        return outer_config if check else False
-    
-    if os.path.exists(path):
-        try:
-            priority_config = configparser.ConfigParser()
-            priority_config.read(path)
-            if not priority_config.sections():
-                return default_config
+    try:
+        priority_config = configparser.ConfigParser()
+        priority_config.read(path)
+        if priority_config.sections():
             priority_config = dict(priority_config.items('Config_log_analyzer'))
             for item in priority_config.items():
-                priority_config = check_option(priority_config, *item)
-                if priority_config:
-                    default_config[item[0].upper()] = priority_config[item[0]]
-                else:
-                    raise Exception
-            return default_config
-        except Exception:
-            raise Exception("Bad config!")
-    else:
-        raise Exception("Bad path to config!")
+                if item[1] == 'DEBUG':
+                    priority_config[item[0]] = logging.DEBUG
+                if item[1] == 'INFO':
+                    priority_config[item[0]] = logging.INFO
+                if item[1] == 'ERROR':
+                    priority_config[item[0]] = logging.ERROR
+                if re.match(r'\d+$', item[1]):
+                    priority_config[item[0]] = int(item[1])
+                default_config[item[0].upper()] = priority_config[item[0]]
+        return default_config
+    except Exception:
+        raise Exception("Bad config!")
 
 
 def find_log(dir_log_nginx):
-    maximum = datetime.strptime('18000101', '%Y%m%d')
+    maximum = None
     file_for_analyze = None
     date = 0
     ex = None
+    if not os.path.exists(dir_log_nginx):
+        raise Exception('no such directory!')
     for file_ in os.listdir(dir_log_nginx):
         f = re.match(r'nginx-access-ui.log-(?P<cur_date>\d{8})(\.(?P<cur_ex>gz)|$)', file_)
         if f:
             cur_date, cur_ex = datetime.strptime(f.group('cur_date'), '%Y%m%d'), f.group('cur_ex')
-            maximum = max(maximum, cur_date)
+            maximum = (max(maximum, cur_date) if maximum is not None else cur_date)
             if cur_date == maximum:
                 file_for_analyze = file_
                 date, ex = cur_date, cur_ex
@@ -128,7 +109,10 @@ def parse_log(path_file_for_analyze, ex):
                 all_time += string_log.time
                 key = string_log.url
                 data[key].append(string_log.time)
-    return data, good_strings, all_strings, all_time
+    persent = 0
+    if all_strings > 0:
+        persent = Fraction(good_strings, all_strings)
+    return data, good_strings, all_time, persent
 
 
 def count_stat(data,  num_req, all_time, report_size=5):  # data ->{url: [list_of_times]},
@@ -174,40 +158,39 @@ def render_report(data_to_render_, report_path):
         report_date.write(report_to_file)
 
 
-def main(config):
-    logging.basicConfig(format='[%(asctime)s] %(levelname).1s %(message)s', level=config["LOGGING_LEVEL"],
-                        filename=config["LOGGING_TO_FILE"])
-    file_log = find_log(config["LOG_DIR"])
+def check_report(path, conf):
+    if os.path.exists(conf['REPORT_DIR']):
+        if os.path.exists(path):
+            return True
+    else:
+        os.makedirs(conf['REPORT_DIR'])
+    return False
+
+
+def main(conf):
+    logging.basicConfig(format='[%(asctime)s] %(levelname).1s %(message)s', level=conf["LOGGING_LEVEL"],
+                        filename=conf["LOGGING_TO_FILE"])
+    file_log = find_log(conf["LOG_DIR"])
     if file_log is None:
         logging.error('File_for_analyze is not found.')
         return
     logging.debug("find_log: {} OK".format(file_log.file_for_analyze))
-    report = 'report-{}.html'.format(file_log.date.strftime('%Y.%m.%d'))
-    if os.path.exists(config['REPORT_DIR']):
-        if report in os.listdir(config['REPORT_DIR']):
-            logging.error('the file:{} already processed'.format(file_log.file_for_analyze))
-            return
-    else:
-        try:
-            os.mkdir(config['REPORT_DIR'])
-        except Exception:
-            logging.error('Bad option:REPORT_DIR in config file!')
-            return
-    report_path = os.path.join(config['REPORT_DIR'], report)
-    path_file_for_analyze = os.path.join(config["LOG_DIR"], file_log.file_for_analyze)
-    raw_data, good_strings, all_strings, all_time = parse_log(path_file_for_analyze, file_log.ex)
-    if all_strings > 0:
-        if Fraction(good_strings, all_strings) <= Fraction(config["LEVEL_PARSE"], 100):
-            logging.error('Could not parse more {0}% in {1}. Try to check log format.'.
-                          format(config["LEVEL_PARSE"], path_file_for_analyze))
-            return
-    else:
-        logging.error('{} file is empty!'.format(path_file_for_analyze))
+
+    report_path = os.path.join(conf['REPORT_DIR'], 'report-{}.html'.format(file_log.date.strftime('%Y.%m.%d')))
+    if check_report(report_path, conf):
+        logging.info('the file:{} already processed'.format(file_log.file_for_analyze))
         return
+    path_file_for_analyze = os.path.join(conf["LOG_DIR"], file_log.file_for_analyze)
+    raw_data, good_strings, all_time, persent = parse_log(path_file_for_analyze, file_log.ex)
+    if persent <= Fraction(conf["LEVEL_PARSE"], 100):
+            logging.error('Could not parse more {0}% in {1}. Try to check log format.'.
+                          format(conf["LEVEL_PARSE"], path_file_for_analyze))
+            return
     logging.debug("parse_log: OK")
-    data_to_render = count_stat(raw_data, good_strings, all_time,
-                                    report_size=config["REPORT_SIZE"])
+
+    data_to_render = count_stat(raw_data, good_strings, all_time, report_size=conf["REPORT_SIZE"])
     logging.debug("count_stat: OK")
+
     render_report(data_to_render, report_path)
     logging.info("render_report: OK. Report file: {}".format(report_path))
 

@@ -13,6 +13,7 @@ import shutil
 from collections import namedtuple
 from log_analyzer import parse_config, find_log, parse_log, count_stat, main
 from datetime import datetime
+from fractions import Fraction
 
 
 class MyListTest(unittest.TestCase):
@@ -61,7 +62,6 @@ class MyListTest(unittest.TestCase):
 
     def test_find_log_no_file(self):
         res = find_log('./test/test_logs_nginx/test_no_file')
-        Log = namedtuple('Log', 'file_for_analyze date ex')
         self.assertEquals(res, None)
 
     def test_parse_log_empty_file(self):
@@ -72,7 +72,7 @@ class MyListTest(unittest.TestCase):
         res = parse_log('./test/test_logs_nginx/nginx-access-ui.log-20200413.gz', 'gz')
         parse = ({'/api/v2/banner/25019354': [0.390],
                   '/api/1/photogenic_banners/list/?server_name=WIN7RB4': [0.133],
-                  '/api/v2/banner/16852664': [0.199]}, 3, 35, 0.722)
+                  '/api/v2/banner/16852664': [0.199]}, 3, 0.722, Fraction(3, 35))
         self.assertEquals(res, parse)
 
     def test_count_stat(self):
@@ -109,7 +109,7 @@ Try to check log format.\n')
 
     def test_main(self):
         config = dict(REPORT_SIZE=1000, REPORT_DIR="./test/reports", LOG_DIR="./test", LEVEL_PARSE=50,
-                      LOGGING_LEVEL=logging.INFO, LOGGING_TO_FILE= './test/log_analyzer.log')
+                      LOGGING_LEVEL=logging.INFO, LOGGING_TO_FILE='./test/log_analyzer.log')
         main(config)
         res1 = os.path.exists('./test/log_analyzer.log')
         with open('./test/log_analyzer.log', 'r') as f:
