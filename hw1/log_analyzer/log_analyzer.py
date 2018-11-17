@@ -34,31 +34,28 @@ Req = namedtuple('req', 'url time')
 
 
 def create_parser():
-    default = u"{}/config_log_analyzer".format(os.path.dirname(os.path.abspath(__file__)))
+    default = "{}/config_log_analyzer".format(os.path.dirname(os.path.abspath(__file__)))
     parser_ = argparse.ArgumentParser()
     parser_.add_argument('-c', '--config', default=default)
     return parser_
 
 
 def parse_config(default_config, path):
-    try:
-        priority_config = configparser.ConfigParser()
-        priority_config.read(path)
-        if priority_config.sections():
-            priority_config = dict(priority_config.items('Config_log_analyzer'))
-            for item in priority_config.items():
-                if item[1] == 'DEBUG':
-                    priority_config[item[0]] = logging.DEBUG
-                if item[1] == 'INFO':
-                    priority_config[item[0]] = logging.INFO
-                if item[1] == 'ERROR':
-                    priority_config[item[0]] = logging.ERROR
-                if re.match(r'\d+$', item[1]):
-                    priority_config[item[0]] = int(item[1])
-                default_config[item[0].upper()] = priority_config[item[0]]
-        return default_config
-    except Exception:
-        raise Exception("Bad config!")
+    priority_config = configparser.ConfigParser()
+    priority_config.read(path)
+    if priority_config.sections():
+        priority_config = dict(priority_config.items('Config_log_analyzer'))
+        for item in priority_config.items():
+            if item[1] == 'DEBUG':
+                priority_config[item[0]] = logging.DEBUG
+            if item[1] == 'INFO':
+                priority_config[item[0]] = logging.INFO
+            if item[1] == 'ERROR':
+                priority_config[item[0]] = logging.ERROR
+            if re.match(r'\d+$', item[1]):
+                priority_config[item[0]] = int(item[1])
+            default_config[item[0].upper()] = priority_config[item[0]]
+    return default_config
 
 
 def find_log(dir_log_nginx):
@@ -67,7 +64,7 @@ def find_log(dir_log_nginx):
     date = 0
     ex = None
     if not os.path.exists(dir_log_nginx):
-        raise Exception('no such directory!')
+        raise Exception('{} no such directory!'.format(dir_log_nginx))
     for file_ in os.listdir(dir_log_nginx):
         f = re.match(r'nginx-access-ui.log-(?P<cur_date>\d{8})(\.(?P<cur_ex>gz)|$)', file_)
         if f:
@@ -81,6 +78,7 @@ def find_log(dir_log_nginx):
 
 def parse_string(file_from):
     for line in file_from:
+        line = line.decode('utf-8')
         lst = line.split()
         pattern_ip = r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}'
         pattern_url = r'(/\w*)+'
@@ -152,9 +150,11 @@ def count_stat(data,  num_req, all_time, report_size=5):  # data ->{url: [list_o
 def render_report(data_to_render_, report_path):
     table_json = json.dumps(data_to_render_, indent=4)
     with open('report.html', 'r') as report:
-        report_to_file = Template(report.read())
+        report = report.read().decode('utf-8')
+        report_to_file = Template(report)
     report_to_file = report_to_file.safe_substitute(table_json=table_json)
     with open(report_path, 'w') as report_date:
+        report_to_file = report_to_file.encode('utf-8')
         report_date.write(report_to_file)
 
 
@@ -170,6 +170,7 @@ def check_report(path, conf):
 def main(conf):
     logging.basicConfig(format='[%(asctime)s] %(levelname).1s %(message)s', level=conf["LOGGING_LEVEL"],
                         filename=conf["LOGGING_TO_FILE"])
+
     file_log = find_log(conf["LOG_DIR"])
     if file_log is None:
         logging.error('File_for_analyze is not found.')
@@ -180,6 +181,7 @@ def main(conf):
     if check_report(report_path, conf):
         logging.info('the file:{} already processed'.format(file_log.file_for_analyze))
         return
+
     path_file_for_analyze = os.path.join(conf["LOG_DIR"], file_log.file_for_analyze)
     raw_data, good_strings, all_time, persent = parse_log(path_file_for_analyze, file_log.ex)
     if persent <= Fraction(conf["LEVEL_PARSE"], 100):
@@ -198,7 +200,10 @@ def main(conf):
 if __name__ == "__main__":
     parser = create_parser()
     namespace = parser.parse_args()
-    config = parse_config(config, namespace.config)  # type(namespace.config) -> str
+    try:
+        config = parse_config(config, namespace.config)
+    except Exception:
+        raise Exception("Bad config!")
     try:
         main(config)
     except Exception:
