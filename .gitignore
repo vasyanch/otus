@@ -1,8 +1,8 @@
 .idea
-.pyc
+*.pyc
 log
 Untitled.ipynb
 response
 .ipynb_checkpoints
-task
-requests
+hw3/task
+hw3/requests
