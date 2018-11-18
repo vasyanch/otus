@@ -236,16 +236,10 @@ class OnlineScoreRequest(Request):
         invalid_fields = super(OnlineScoreRequest, self).is_valid()
         if invalid_fields is not True:
             return invalid_fields
-        invalid_fields = []
         for i, j in (('phone', 'email'), ('first_name', 'last_name'), ('gender', 'birthday')):
             if self.__dict__[i] is not None and self.__dict__[j] is not None:
                 return True
-            elif self.__dict__[i] is None and self.__dict__[j] is None:
-                invalid_fields.append(j)
-                invalid_fields.append(i)
-            else:
-                invalid_fields.append(j) if self.__dict__[i] else invalid_fields.append(i)
-        return invalid_fields
+        return False
 
 
 class MethodRequest(Request):
@@ -308,7 +302,9 @@ def online_score(request, ctx, store):
     method = OnlineScoreRequest(**arguments)
     valid = method.is_valid()
     if valid is not True:
-        return '({0}) this argument(s) is empty'.format(', '.join(valid)), 422
+        return ('Request is bad! At least one pair of fields from {(phone, email), '
+                '(first_name, last_name), (gender, birthday)}  should be not empty!', 422) if not valid \
+                else ('({0}) this argument(s) is bad'.format(', '.join(valid)), 422)
     ctx['has'] = arguments.keys()
     if admin:
         response['score'] = 42
