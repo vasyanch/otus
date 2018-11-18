@@ -8,8 +8,10 @@ import logging
 import hashlib
 import uuid
 import re
+import os
 import scoring
-from optparse import OptionParser
+import argparse
+import configparser
 from BaseHTTPServer import HTTPServer, BaseHTTPRequestHandler
 
 SALT = "Otus"
@@ -36,6 +38,30 @@ GENDERS = {
     MALE: "male",
     FEMALE: "female",
 }
+
+config = {
+    "LOGGING_TO_FILE": None,
+    "LOGGING_LEVEL": logging.DEBUG,
+    "PORT": 8080
+}
+
+
+def parse_config(default_config, path):
+    priority_config = configparser.ConfigParser()
+    priority_config.read(path)
+    if priority_config.sections():
+        priority_config = dict(priority_config.items('Config_api'))
+        for item in priority_config.items():
+            if item[1] == 'DEBUG':
+                priority_config[item[0]] = logging.DEBUG
+            if item[1] == 'INFO':
+                priority_config[item[0]] = logging.INFO
+            if item[1] == 'ERROR':
+                priority_config[item[0]] = logging.ERROR
+            if re.match(r'\d+$', item[1]):
+                priority_config[item[0]] = int(item[1])
+            default_config[item[0].upper()] = priority_config[item[0]]
+    return default_config
 
 
 class Field(object):
@@ -293,7 +319,6 @@ def online_score(request, ctx, store):
 
 class MainHTTPHandler(BaseHTTPRequestHandler):
     router = {
-        "method": method_handler,
         "online_score": online_score,
         "clients_interests": clients_interests
     }
@@ -310,6 +335,7 @@ class MainHTTPHandler(BaseHTTPRequestHandler):
             data_string = self.rfile.read(int(self.headers['Content-Length']))
             request = json.loads(data_string)
         except:
+            logging.exception("Could not read data!")
             code = BAD_REQUEST
 
         if request:
@@ -322,7 +348,11 @@ class MainHTTPHandler(BaseHTTPRequestHandler):
                     logging.exception("Unexpected error: %s" % e)
                     code = INTERNAL_ERROR
             else:
+                logging.error('{} no such method!'.format(path))
                 code = NOT_FOUND
+        else:
+            if code != BAD_REQUEST:
+                logging.info('Empty data.')
 
         self.send_response(code)
         self.send_header("Content-Type", "application/json")
@@ -338,14 +368,17 @@ class MainHTTPHandler(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
-    op = OptionParser()
-    op.add_option("-p", "--port", action="store", type=int, default=8080)
-    op.add_option("-l", "--log", action="store", default=None)
-    (opts, args) = op.parse_args()
-    logging.basicConfig(filename=opts.log, level=logging.INFO,
+    parser_config = argparse.ArgumentParser()
+    parser_config.add_argument('-c', '--config', default="{}/config_api".format(os.path.dirname(os.path.abspath(__file__))))
+    path_config = parser_config.parse_args()  # path_config.config -> path to config file
+    try:
+        config = parse_config(config, path_config.config)
+    except Exception:
+        raise Exception("Bad config!")
+    logging.basicConfig(filename=config['LOGGING_TO_FILE'], level=config['LOGGING_LEVEL'],
                         format='[%(asctime)s] %(levelname).1s %(message)s', datefmt='%Y.%m.%d %H:%M:%S')
-    server = HTTPServer(("localhost", opts.port), MainHTTPHandler)
-    logging.info("Starting server at %s" % opts.port)
+    server = HTTPServer(("localhost", config['PORT']), MainHTTPHandler)
+    logging.info("Starting server at %s" % config['PORT'])
     try:
         server.serve_forever()
     except KeyboardInterrupt:

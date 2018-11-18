@@ -1,8 +1,10 @@
 .idea
 **.pyc
+**.log
 log
 Untitled.ipynb
 response
 .ipynb_checkpoints
 task
 requests
+test_config_api
