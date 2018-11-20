@@ -52,7 +52,7 @@ def parse_config(default_config, path):
                 priority_config[item[0]] = logging.INFO
             if item[1] == 'ERROR':
                 priority_config[item[0]] = logging.ERROR
-            if re.match(r'\d+$', item[1]):
+            if item[1].isdigit():
                 priority_config[item[0]] = int(item[1])
             default_config[item[0].upper()] = priority_config[item[0]]
     return default_config
@@ -67,12 +67,16 @@ def find_log(dir_log_nginx):
         raise Exception('{} no such directory!'.format(dir_log_nginx))
     for file_ in os.listdir(dir_log_nginx):
         f = re.match(r'nginx-access-ui.log-(?P<cur_date>\d{8})(\.(?P<cur_ex>gz)|$)', file_)
-        if f:
+        if not f or not os.path.isfile(os.path.join(dir_log_nginx, file_)):
+            continue
+        try:
             cur_date, cur_ex = datetime.strptime(f.group('cur_date'), '%Y%m%d'), f.group('cur_ex')
-            maximum = (max(maximum, cur_date) if maximum is not None else cur_date)
-            if cur_date == maximum:
-                file_for_analyze = file_
-                date, ex = cur_date, cur_ex
+        except ValueError:
+            raise ValueError('Invalid date in file_log -> {}'.format(file_))
+        maximum = (max(maximum, cur_date) if maximum is not None else cur_date)
+        if cur_date == maximum:
+            file_for_analyze = file_
+            date, ex = cur_date, cur_ex
     return Log(file_for_analyze, date, ex) if file_for_analyze else None
 
 
