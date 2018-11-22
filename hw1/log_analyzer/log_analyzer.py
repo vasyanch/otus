@@ -72,7 +72,7 @@ def find_log(dir_log_nginx):
         try:
             cur_date, cur_ex = datetime.strptime(f.group('cur_date'), '%Y%m%d'), f.group('cur_ex')
         except ValueError:
-            pass
+            continue
             # raise ValueError('Invalid date in file_log -> {}'.format(file_))
         maximum = (max(maximum, cur_date) if maximum is not None else cur_date)
         if cur_date == maximum:
