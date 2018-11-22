@@ -58,14 +58,19 @@ def parse_config(default_config, path):
                 priority_config[item[0]] = logging.INFO
             if item[1] == 'ERROR':
                 priority_config[item[0]] = logging.ERROR
-            if re.match(r'\d+$', item[1]):
+            if item[1].isdigit():
                 priority_config[item[0]] = int(item[1])
             default_config[item[0].upper()] = priority_config[item[0]]
     return default_config
 
 
+class ValidationError(Exception):
+    pass
+
+
 class Field(object):
     __metaclass__ = abc.ABCMeta
+    empty_values = ('', [], {})
 
     def __init__(self, nullable=False, required=False):
         self.required = required
@@ -73,7 +78,10 @@ class Field(object):
 
     @abc.abstractmethod
     def check(self, value):
-        return True if self.nullable else False
+        if (self.required and value is None) or (not self.nullable and value in Field.empty_values):
+            raise ValidationError('{} is invalid.'
+                                  ' Option required/nullable is incorrect!'.format(self.__class__.__name__))
+        return value
 
 
 class CharField(Field):
@@ -83,105 +91,83 @@ class CharField(Field):
         self.max_length = max_length
 
     def check(self, value):
-        ans = False
-        if isinstance(value, (str, unicode)):
-            if value:
-                if len(value) <= self.max_length:
-                    ans = True
-            else:
-                ans = super(CharField, self).check(value)
-        return ans
+        value = super(CharField, self).check(value)
+        if value is not None and not (isinstance(value, (str, unicode)) and len(value) <= self.max_length):
+            raise ValidationError('{} is invalid!'.format(self.__class__.__name__))
+        return value
 
 
 class ArgumentsField(Field):
 
     def check(self, value):
-        ans = False
-        if isinstance(value, dict):
-            if value:
-                ans = True
-            else:
-                ans = super(ArgumentsField, self).check(value)
-        return ans
+        value = super(ArgumentsField, self).check(value)
+        if value is not None and not isinstance(value, dict):
+            raise ValidationError('{} is invalid!'.format(self.__class__.__name__))
+        return value
 
 
 class EmailField(CharField):
 
     def check(self, value):
-        ans = False
-        if super(EmailField, self).check(value) and (value == '' or '@' in value):
-            ans = True
-        return ans
+        value = super(EmailField, self).check(value)
+        if value is not None and not (isinstance(value, (int, str, unicode)) and (value == '' or '@' in value)):
+            raise ValidationError('{} is invalid!'.format(self.__class__.__name__))
+        return value
 
 
 class PhoneField(Field):
-
-    def __init__(self, nullable=False, required=False):
-        super(PhoneField, self).__init__(nullable, required)
-        self.max_length = 11
+    max_length = 11
 
     def check(self, value):
-        ans = False
-        if isinstance(value, (int, str, unicode)):
+        value = super(PhoneField, self).check(value)
+        if value is not None:
             value = str(value)
-            if value:
-                if re.match(r'\d{11}$', value) and len(value) == self.max_length and value[0] == '7':
-                    ans = True
-            else:
-                ans = super(PhoneField, self).check(value)
-        return ans
+            if not (isinstance(value, (int, str, unicode)) and
+                    (value == '' or (re.match(r'\d{11}$', str(value)) and
+                                     len(str(value)) == PhoneField.max_length and str(value)[0] == '7'))):
+                raise ValidationError('{} is invalid!'.format(self.__class__.__name__))
+        return value
 
 
 class DateField(Field):
 
     def check(self, value):
-        ans = False
-        if isinstance(value, (str, unicode)):
-            if value:
-                if re.match(r'\d{2}.\d{2}.\d{4}$', value):
-                    ans = True
-            else:
-                ans = super(DateField, self).check(value)
-        return ans
+        value = super(DateField, self).check(value)
+        if value is not None and isinstance(value, (str, unicode)):
+            try:
+                value = datetime.datetime.strptime(value, '%d.%m.%Y')
+            except ValueError:
+                raise ValidationError('{} is invalid!'.format(self.__class__.__name__))
+        return value
 
 
 class BirthDayField(DateField):
 
     def check(self, value):
-        ans = False
-        if super(BirthDayField, self).check(value):
-            if value:
-                delta = datetime.datetime.today() - datetime.datetime.strptime(value, '%d.%m.%Y')
-                if 0 < delta.days <= 365 * 70:
-                    ans = True
-            else:
-                ans = True
-        return ans
+        value = super(BirthDayField, self).check(value)
+        if value is not None:
+            delta = datetime.datetime.today() - value
+            if not 0 < delta.days <= 365 * 70:
+                raise ValidationError('{} is invalid!'.format(self.__class__.__name__))
+        return value
 
 
 class GenderField(Field):
 
     def check(self, value):
-        ans = False
-        if value in (0, 1, 2):
-            if value:
-                ans = True
-            else:
-                ans = super(GenderField, self).check(value)
-        return ans
+        value = super(GenderField, self).check(value)
+        if value is not None and not (value in (0, 1, 2)):
+            raise ValidationError('{} is invalid!'.format(self.__class__.__name__))
+        return value
 
 
 class ClientIDsField(Field):
 
     def check(self, value):
-        ans = False
-        if isinstance(value, list):
-            if value:
-                if all(isinstance(i, int) for i in value):
-                    ans = True
-            else:
-                ans = super(ClientIDsField, self).check(value)
-        return ans
+        value = super(ClientIDsField, self).check(value)
+        if value is not None and not (isinstance(value, list) and all(isinstance(i, int) for i in value)):
+            raise ValidationError('{} is invalid!'.format(self.__class__.__name__))
+        return value
 
 
 class Request(object):
@@ -189,35 +175,24 @@ class Request(object):
 
     def __init__(self, **kwargs):
         for key in kwargs:
-            new_key = '_{}'.format(key)
-            self.__dict__[new_key] = kwargs[key]
+            self.__setattr__(key, kwargs[key])
 
     def is_valid(self):
         invalid_fields = []
-        for atr in self.__dict__.keys():
-            value = self.__getattribute__(atr)
-            instance = self.__getattribute__(atr.lstrip('_'))
-            if instance.required and value is None:
-                invalid_fields.append(atr.lstrip('_'))
-            else:
-                if value is not None:
-                    if instance.check(value):
-                        self.__setattr__(atr.lstrip('_'), value)
-                        self.__delattr__(atr)
-                    else:
-                        invalid_fields.append(atr.lstrip('_'))
-                else:  # value = None, required = False
-                    self.__setattr__(atr.lstrip('_'), value)
-                    self.__delattr__(atr)
+        for key, cls in self.__class__.__dict__.items():
+            if not isinstance(cls, Field):
+                continue
+            value = self.__getattribute__(key) if key in self.__dict__ else None
+            try:
+                self.__setattr__(key, cls.check(value))
+            except ValidationError:
+                invalid_fields.append(key)
         return invalid_fields if invalid_fields else True
 
 
 class ClientsInterestsRequest(Request):
     client_ids = ClientIDsField(required=True, nullable=False)
     date = DateField(required=False, nullable=True)
-
-    def __init__(self, client_ids=None, date=None):
-        super(ClientsInterestsRequest, self).__init__(client_ids=client_ids, date=date)
 
 
 class OnlineScoreRequest(Request):
@@ -228,16 +203,12 @@ class OnlineScoreRequest(Request):
     birthday = BirthDayField(required=False, nullable=True)
     gender = GenderField(required=False, nullable=True)
 
-    def __init__(self, first_name=None, last_name=None, email=None, phone=None, birthday=None, gender=None):
-        super(OnlineScoreRequest, self).__init__(first_name=first_name, last_name=last_name, email=email,
-                                                 phone=phone, birthday=birthday, gender=gender)
-
     def is_valid(self):
         invalid_fields = super(OnlineScoreRequest, self).is_valid()
         if invalid_fields is not True:
             return invalid_fields
         for i, j in (('phone', 'email'), ('first_name', 'last_name'), ('gender', 'birthday')):
-            if self.__dict__[i] is not None and self.__dict__[j] is not None:
+            if (self.__getattribute__(i) is not None) and (self.__getattribute__(j) is not None):
                 return True
         return False
 
@@ -248,10 +219,6 @@ class MethodRequest(Request):
     token = CharField(required=True, nullable=True)
     arguments = ArgumentsField(required=True, nullable=True)
     method = CharField(required=True, nullable=True)
-
-    def __init__(self, account=None, login=None, token=None, arguments=None, method=None):
-        super(MethodRequest, self).__init__(account=account, login=login, token=token, arguments=arguments,
-                                            method=method)
 
     @property
     def is_admin(self):
@@ -269,54 +236,46 @@ def check_auth(request):
 
 
 def method_handler(request, ctx, store):
-    req = MethodRequest(**request['body'])
-    valid = req.is_valid()
+
+    def clients_interests(req, context, storage):
+        response, code = {}, OK
+        method = ClientsInterestsRequest(**req.arguments)
+        validation = method.is_valid()
+        if validation is not True:
+            return '({0}) this argument(s) is bad'.format(', '.join(validation)), 422
+        context['nclients'] = len(method.client_ids)
+        for i in method.client_ids:
+            response[i] = scoring.get_interests(storage, None)
+        return response, code
+
+    def online_score(req, context, storage):
+        response, code = {}, OK
+        method = OnlineScoreRequest(**req.arguments)
+        validation = method.is_valid()
+        if validation is not True:
+            return ('Request is bad! At least one pair of fields from {(phone, email), '
+                    '(first_name, last_name), (gender, birthday)}  should be not empty!', 422) if not validation \
+                else ('({0}) this argument(s) is bad'.format(', '.join(validation)), 422)
+        context['has'] = req.arguments.keys()
+        response['score'] = 42 if req.is_admin else scoring.get_score(storage, **req.arguments)
+        return response, code
+
+    methods = dict(clients_interests=clients_interests, online_score=online_score)
+    request = MethodRequest(**request['body'])
+    valid = request.is_valid()
     if valid is not True:
         return '({0}) this field(s) is bad'.format(' '.join(valid)), 422
-    if not check_auth(req):
+    if not check_auth(request):
         return 'Forbidden', 403
-    return req.arguments, req.is_admin
-
-
-def clients_interests(request, ctx, store):
-    response, code = {}, OK
-    arguments, admin = method_handler(request, ctx, store)
-    if admin in (422, 403):
-        return arguments, admin
-    method = ClientsInterestsRequest(**arguments)
-    valid = method.is_valid()
-    if valid is not True:
-        return '({0}) this argument(s) is bad'.format(', '.join(valid)), 422
-    client_ids = list(method.client_ids)
-    ctx['nclients'] = len(client_ids)
-    for i in client_ids:
-        response[i] = scoring.get_interests(store, None)
-    return response, code
-
-
-def online_score(request, ctx, store):
-    response, code = {}, OK
-    arguments, admin = method_handler(request, ctx, store)
-    if admin in (422, 403):
-        return arguments, admin
-    method = OnlineScoreRequest(**arguments)
-    valid = method.is_valid()
-    if valid is not True:
-        return ('Request is bad! At least one pair of fields from {(phone, email), '
-                '(first_name, last_name), (gender, birthday)}  should be not empty!', 422) if not valid \
-                else ('({0}) this argument(s) is bad'.format(', '.join(valid)), 422)
-    ctx['has'] = arguments.keys()
-    if admin:
-        response['score'] = 42
-    else:
-        response['score'] = scoring.get_score(store, **arguments)
-    return response, code
+    try:
+        return methods[request.method](request, ctx, store)
+    except KeyError:
+        return 'No such method {}!'.format(request.method), 422
 
 
 class MainHTTPHandler(BaseHTTPRequestHandler):
     router = {
-        "online_score": online_score,
-        "clients_interests": clients_interests
+        "method": method_handler
     }
     store = None
 
@@ -344,11 +303,7 @@ class MainHTTPHandler(BaseHTTPRequestHandler):
                     logging.exception("Unexpected error: %s" % e)
                     code = INTERNAL_ERROR
             else:
-                logging.error('{} no such method!'.format(path))
                 code = NOT_FOUND
-        else:
-            if code != BAD_REQUEST:
-                logging.info('Empty data.')
 
         self.send_response(code)
         self.send_header("Content-Type", "application/json")
