@@ -1,12 +1,15 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
 import hashlib
 import json
 
 
-def get_score(store, phone, email, birthday=None, gender=None, first_name=None, last_name=None):
+def get_score(store, phone=None, email=None, birthday=None, gender=None, first_name=None, last_name=None):
     key_parts = [
-        first_name or "",
-        last_name or "",
-        phone or "",
+        first_name.encode('utf-8') or "",
+        last_name.encode('utf-8') or "",
+        phone.encode('utf-8') or "",
         birthday.strftime("%Y%m%d") if birthday is not None else "",
     ]
     key = "uid:" + hashlib.md5("".join(key_parts)).hexdigest()
