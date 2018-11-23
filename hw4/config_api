@@ -1,0 +1,8 @@
+[Config_api]
+logging_to_file = api.log
+port = 8080
+logging_level = DEBUG
+store_port = 6379
+store_url = localhost
+number_db = 0
+

@@ -43,7 +43,10 @@ GENDERS = {
 config = {
     "LOGGING_TO_FILE": None,
     "LOGGING_LEVEL": logging.DEBUG,
-    "PORT": 8080
+    "PORT": 8080,
+    "STORE_PORT": 6379,
+    "STORE_URL": 'localhost',
+    "NUMBER_DB": 0,
 }
 
 
@@ -258,7 +261,10 @@ def method_handler(request, ctx, store):
                     '(first_name, last_name), (gender, birthday)}  should be not empty!', 422) if not validation \
                 else ('({0}) this argument(s) is bad'.format(', '.join(validation)), 422)
         context['has'] = req.arguments.keys()
-        response['score'] = 42 if req.is_admin else scoring.get_score(storage, **req.arguments)
+        arguments = {}
+        for i in req.arguments.keys():
+            arguments[i] = method.__getattribute__(i)
+        response['score'] = 42 if req.is_admin else scoring.get_score(storage, **arguments)
         return response, code
 
     methods = dict(clients_interests=clients_interests, online_score=online_score)
@@ -278,7 +284,7 @@ class MainHTTPHandler(BaseHTTPRequestHandler):
     router = {
         "method": method_handler
     }
-    store = Storage(host='localhost', port=6379, db=1)
+    store = Storage(host=config['STORE_URL'], port=config['STORE_PORT'], db=config['NUMBER_DB'])
 
     def get_request_id(self, headers):
         return headers.get('HTTP_X_REQUEST_ID', uuid.uuid4().hex)
@@ -316,6 +322,7 @@ class MainHTTPHandler(BaseHTTPRequestHandler):
         context.update(r)
         logging.info(context)
         self.wfile.write(json.dumps(r))
+        print '\n'
         return
 
 

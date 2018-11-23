@@ -7,10 +7,12 @@ import json
 
 def get_score(store, phone=None, email=None, birthday=None, gender=None, first_name=None, last_name=None):
     key_parts = [
-        first_name.encode('utf-8') or "",
-        last_name.encode('utf-8') or "",
-        phone.encode('utf-8') or "",
+        first_name.encode('utf-8') if first_name is not None else "",
+        last_name.encode('utf-8') if last_name is not None else "",
+        phone.encode('utf-8') if phone is not None else "",
         birthday.strftime("%Y%m%d") if birthday is not None else "",
+        str(gender) if gender is not None else "",
+        email.encode('utf-8') if email is not None else "",
     ]
     key = "uid:" + hashlib.md5("".join(key_parts)).hexdigest()
     # try get from cache,
@@ -18,6 +20,7 @@ def get_score(store, phone=None, email=None, birthday=None, gender=None, first_n
     score = store.cache_get(key) or 0
     if score:
         return score
+    print 'HERE'
     if phone:
         score += 1.5
     if email:
