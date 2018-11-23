@@ -68,6 +68,15 @@ def parse_config(default_config, path):
     return default_config
 
 
+parser_config = argparse.ArgumentParser()
+parser_config.add_argument('-c', '--config', default="{}/config_api".format(os.path.dirname(os.path.abspath(__file__))))
+path_config = parser_config.parse_args()  # path_config.config -> path to config file
+try:
+    config = parse_config(config, path_config.config)
+except Exception:
+    raise Exception("Bad config!")
+
+
 class ValidationError(Exception):
     pass
 
@@ -322,18 +331,10 @@ class MainHTTPHandler(BaseHTTPRequestHandler):
         context.update(r)
         logging.info(context)
         self.wfile.write(json.dumps(r))
-        print '\n'
         return
 
 
 if __name__ == "__main__":
-    parser_config = argparse.ArgumentParser()
-    parser_config.add_argument('-c', '--config', default="{}/config_api".format(os.path.dirname(os.path.abspath(__file__))))
-    path_config = parser_config.parse_args()  # path_config.config -> path to config file
-    try:
-        config = parse_config(config, path_config.config)
-    except Exception:
-        raise Exception("Bad config!")
     logging.basicConfig(filename=config['LOGGING_TO_FILE'], level=config['LOGGING_LEVEL'],
                         format='[%(asctime)s] %(levelname).1s %(message)s', datefmt='%Y.%m.%d %H:%M:%S')
     server = HTTPServer(("localhost", config['PORT']), MainHTTPHandler)

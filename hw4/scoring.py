@@ -20,7 +20,6 @@ def get_score(store, phone=None, email=None, birthday=None, gender=None, first_n
     score = store.cache_get(key) or 0
     if score:
         return score
-    print 'HERE'
     if phone:
         score += 1.5
     if email:

@@ -24,7 +24,8 @@ class Storage(object):
 
     def cache_get(self, key):
         try:
-            return self.storage.get(key)
+            val = self.storage.get(key)
+            return float(val) if val is not None else None
         except redis.ConnectionError:
             return None
 
