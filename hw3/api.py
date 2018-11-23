@@ -257,7 +257,10 @@ def method_handler(request, ctx, store):
                     '(first_name, last_name), (gender, birthday)}  should be not empty!', 422) if not validation \
                 else ('({0}) this argument(s) is bad'.format(', '.join(validation)), 422)
         context['has'] = req.arguments.keys()
-        response['score'] = 42 if req.is_admin else scoring.get_score(storage, **req.arguments)
+        arguments = {}
+        for i in req.arguments.keys():
+            arguments[i] = method.__getattribute__(i)
+        response['score'] = 42 if req.is_admin else scoring.get_score(storage, **arguments)
         return response, code
 
     methods = dict(clients_interests=clients_interests, online_score=online_score)
