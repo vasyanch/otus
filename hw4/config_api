@@ -4,5 +4,6 @@ port = 8080
 logging_level = DEBUG
 store_port = 6379
 store_url = localhost
-number_db = 3
+number_db = 0
+num_reconnect = 10
 

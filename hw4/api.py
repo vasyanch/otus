@@ -47,6 +47,7 @@ config = {
     "STORE_PORT": 6379,
     "STORE_URL": 'localhost',
     "NUMBER_DB": 0,
+    "NUM_RECONNECT": 10,
 }
 
 
@@ -293,7 +294,8 @@ class MainHTTPHandler(BaseHTTPRequestHandler):
     router = {
         "method": method_handler
     }
-    store = Storage(host=config['STORE_URL'], port=config['STORE_PORT'], db=config['NUMBER_DB'])
+    store = Storage(host=config['STORE_URL'], port=config['STORE_PORT'], db=config['NUMBER_DB'],
+                    reconnect=config['NUM_RECONNECT'])
 
     def get_request_id(self, headers):
         return headers.get('HTTP_X_REQUEST_ID', uuid.uuid4().hex)

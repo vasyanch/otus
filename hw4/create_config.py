@@ -12,7 +12,8 @@ def create_config(path):
     config.set('Config_api', 'LOGGING_LEVEL', 'DEBUG')
     config.set('Config_api', 'STORE_PORT', '6379')
     config.set('Config_api', 'STORE_URL', 'localhost')
-    config.set('Config_api', 'NUMBER_DB', '0')
+    config.set('Config_api', 'NUMBER_DB', '1')
+    config.set('Config_api', 'NUM_RECONNECT', '10')
 
     with open(path, 'w') as config_file:
         config.write(config_file)
