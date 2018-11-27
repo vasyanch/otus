@@ -182,12 +182,14 @@ class Request(object):
         for key, cls in self.__class__.__dict__.items():
             if not isinstance(cls, Field):
                 continue
-            value = self.__getattribute__(key) if key in self.__dict__ else None
+            value = getattr(self, key) if key in self.__dict__ else None
             try:
                 self.__setattr__(key, cls.check(value))
             except ValidationError:
                 invalid_fields.append(key)
-        return invalid_fields if invalid_fields else True
+        if invalid_fields:
+            raise ValidationError('({0}) this argument(s) is bad'.format(', '.join(invalid_fields)))
+        return True
 
 
 class ClientsInterestsRequest(Request):
@@ -204,13 +206,12 @@ class OnlineScoreRequest(Request):
     gender = GenderField(required=False, nullable=True)
 
     def is_valid(self):
-        invalid_fields = super(OnlineScoreRequest, self).is_valid()
-        if invalid_fields is not True:
-            return invalid_fields
+        super(OnlineScoreRequest, self).is_valid()
         for i, j in (('phone', 'email'), ('first_name', 'last_name'), ('gender', 'birthday')):
-            if (self.__getattribute__(i) is not None) and (self.__getattribute__(j) is not None):
+            if getattr(self, i) is not None and getattr(self, j) is not None:
                 return True
-        return False
+        raise ValidationError('Request is bad! At least one pair of fields from {(phone, email), '
+                              '(first_name, last_name), (gender, birthday)}  should be not empty!')
 
 
 class MethodRequest(Request):
@@ -235,45 +236,47 @@ def check_auth(request):
     return False
 
 
+def clients_interests(req, context, storage):
+    response, code = {}, OK
+    method = ClientsInterestsRequest(**req.arguments)
+    try:
+        method.is_valid()
+    except ValidationError as e:
+        return str(e), INVALID_REQUEST
+    context['nclients'] = len(method.client_ids)
+    for i in method.client_ids:
+        response[i] = scoring.get_interests(storage, None)
+    return response, code
+
+
+def online_score(req, context, storage):
+    response, code = {}, OK
+    method = OnlineScoreRequest(**req.arguments)
+    try:
+        method.is_valid()
+    except ValidationError as e:
+        return str(e), INVALID_REQUEST
+    context['has'] = req.arguments.keys()
+    arguments = {}
+    for i in req.arguments.keys():
+        arguments[i] = getattr(method, i)
+    response['score'] = 42 if req.is_admin else scoring.get_score(storage, **arguments)
+    return response, code
+
+
 def method_handler(request, ctx, store):
-
-    def clients_interests(req, context, storage):
-        response, code = {}, OK
-        method = ClientsInterestsRequest(**req.arguments)
-        validation = method.is_valid()
-        if validation is not True:
-            return '({0}) this argument(s) is bad'.format(', '.join(validation)), 422
-        context['nclients'] = len(method.client_ids)
-        for i in method.client_ids:
-            response[i] = scoring.get_interests(storage, None)
-        return response, code
-
-    def online_score(req, context, storage):
-        response, code = {}, OK
-        method = OnlineScoreRequest(**req.arguments)
-        validation = method.is_valid()
-        if validation is not True:
-            return ('Request is bad! At least one pair of fields from {(phone, email), '
-                    '(first_name, last_name), (gender, birthday)}  should be not empty!', 422) if not validation \
-                else ('({0}) this argument(s) is bad'.format(', '.join(validation)), 422)
-        context['has'] = req.arguments.keys()
-        arguments = {}
-        for i in req.arguments.keys():
-            arguments[i] = method.__getattribute__(i)
-        response['score'] = 42 if req.is_admin else scoring.get_score(storage, **arguments)
-        return response, code
-
     methods = dict(clients_interests=clients_interests, online_score=online_score)
     request = MethodRequest(**request['body'])
-    valid = request.is_valid()
-    if valid is not True:
-        return '({0}) this field(s) is bad'.format(' '.join(valid)), 422
+    try:
+        request.is_valid()
+    except ValidationError as e:
+        return str(e), INVALID_REQUEST
     if not check_auth(request):
-        return 'Forbidden', 403
+        return 'Forbidden', FORBIDDEN
     try:
         return methods[request.method](request, ctx, store)
     except KeyError:
-        return 'No such method {}!'.format(request.method), 422
+        return 'No such method {}!'.format(request.method), INVALID_REQUEST
 
 
 class MainHTTPHandler(BaseHTTPRequestHandler):
