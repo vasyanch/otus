@@ -176,9 +176,10 @@ class Request(object):
     def __init__(self, **kwargs):
         for key in kwargs:
             self.__setattr__(key, kwargs[key])
+        self.invalid_fields = []
+        self.error_message = None
 
     def is_valid(self):
-        invalid_fields = []
         for key, cls in self.__class__.__dict__.items():
             if not isinstance(cls, Field):
                 continue
@@ -186,10 +187,10 @@ class Request(object):
             try:
                 self.__setattr__(key, cls.check(value))
             except ValidationError:
-                invalid_fields.append(key)
-        if invalid_fields:
-            raise ValidationError('({0}) this argument(s) is bad'.format(', '.join(invalid_fields)))
-        return True
+                self.invalid_fields.append(key)
+        if self.invalid_fields:
+            self.error_message = '({0}) this argument(s) is bad'.format(', '.join(self.invalid_fields))
+        return False if self.invalid_fields else True
 
 
 class ClientsInterestsRequest(Request):
@@ -206,12 +207,14 @@ class OnlineScoreRequest(Request):
     gender = GenderField(required=False, nullable=True)
 
     def is_valid(self):
-        super(OnlineScoreRequest, self).is_valid()
+        if not super(OnlineScoreRequest, self).is_valid():
+            return False
         for i, j in (('phone', 'email'), ('first_name', 'last_name'), ('gender', 'birthday')):
             if getattr(self, i) is not None and getattr(self, j) is not None:
                 return True
-        raise ValidationError('Request is bad! At least one pair of fields from {(phone, email), '
+        self.error_message = ('Request is bad! At least one pair of fields from {(phone, email), '
                               '(first_name, last_name), (gender, birthday)}  should be not empty!')
+        return False
 
 
 class MethodRequest(Request):
@@ -239,10 +242,8 @@ def check_auth(request):
 def clients_interests(req, context, storage):
     response, code = {}, OK
     method = ClientsInterestsRequest(**req.arguments)
-    try:
-        method.is_valid()
-    except ValidationError as e:
-        return str(e), INVALID_REQUEST
+    if not method.is_valid():
+        return method.error_message, INVALID_REQUEST
     context['nclients'] = len(method.client_ids)
     for i in method.client_ids:
         response[i] = scoring.get_interests(storage, None)
@@ -252,10 +253,8 @@ def clients_interests(req, context, storage):
 def online_score(req, context, storage):
     response, code = {}, OK
     method = OnlineScoreRequest(**req.arguments)
-    try:
-        method.is_valid()
-    except ValidationError as e:
-        return str(e), INVALID_REQUEST
+    if not method.is_valid():
+        return method.error_message, INVALID_REQUEST
     context['has'] = req.arguments.keys()
     arguments = {}
     for i in req.arguments.keys():
@@ -267,10 +266,8 @@ def online_score(req, context, storage):
 def method_handler(request, ctx, store):
     methods = dict(clients_interests=clients_interests, online_score=online_score)
     request = MethodRequest(**request['body'])
-    try:
-        request.is_valid()
-    except ValidationError as e:
-        return str(e), INVALID_REQUEST
+    if not request.is_valid():
+        return request.error_message, INVALID_REQUEST
     if not check_auth(request):
         return 'Forbidden', FORBIDDEN
     try:

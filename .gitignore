@@ -2,10 +2,13 @@
 **.pyc
 **.log
 log
-Untitled.ipynb
+**.ipynb
 response
-.ipynb_checkpoints
+**.ipynb_checkpoints
 task
 requests
 test_config_api
 hw4/test_api.py
+hw5/client
+hw5/server
+hw5/create_config
