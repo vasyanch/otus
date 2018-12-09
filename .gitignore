@@ -9,6 +9,7 @@ task
 requests
 test_config_api
 hw4/test_api.py
-hw5/client
-hw5/server
-hw5/create_config
+hw4/client
+hw4/test_result
+hw4/DOCUMENT_ROOT
+
