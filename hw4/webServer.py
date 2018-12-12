@@ -41,7 +41,7 @@ ALLOWED_CONTENT_TYPES = (
 
 SERVER_NAME = 'OTUServer'
 TIMEOUT = 5
-NUM_CONNECTIONS = 100
+NUM_CONNECTIONS = 1000
 
 
 class HttpHandler:
@@ -57,12 +57,13 @@ class HttpHandler:
         self.response_path = ''
         self.protocol = None
         self.process = multiprocessing.current_process().name
+        self.pid = os.getpid()
         self.thread = threading.current_thread().name
 
     def read_all(self):
         data = b''
+        self.sock.settimeout(TIMEOUT)
         while True:
-            self.sock.settimeout(TIMEOUT)
             buf = self.sock.recv(1024)
             data += buf
             if not buf or b'\r\n\r\n' in data:
@@ -71,14 +72,20 @@ class HttpHandler:
         return data
 
     def run(self):
+        logging.debug('process: [name: {0} PID: {1}], thread: {2} -> Start run for request: {3}'.format(
+            self.process, self.pid, self.thread, self.client_address))
         try:
             self.handler()
             while self.keep_alive:
+                self.response_headers = {}
+                self.request_headers = {}
+                self.response_body = b''
+                self.keep_alive = False
                 self.handler()
-        except Exception as e:
+        except Exception:
             self.send_response(INTERNAL_ERROR)
-            logging.info('Process: {0}, thread: {1} -> ERROR: {2}\n'
-                         'Response code: {3}'.format(self.process, self.thread, e, INTERNAL_ERROR))
+            logging.exception('process: [name: {0} PID: {1}], thread: {2} -> '
+                              'response code: {3} ERROR: '.format(self.process, self.pid, self.thread, INTERNAL_ERROR))
         finally:
             self.finish()
 
@@ -87,16 +94,25 @@ class HttpHandler:
             request = self.read_all()
         except socket.error:
             self.keep_alive = False
+            logging.exception('process: [name: {0} PID: {1}], thread: {2} -> ERROR:'.format(self.process, self.pid,
+                                                                                            self.thread))
             return
         if not request:
             return self.send_response(BAD_REQUEST)
+        logging.debug('process: [name: {0} PID: {1}], thread: {2} -> read_all: OK'.format(self.process, self.pid,
+                                                                                          self.thread))
         code = self.parse_request(request)
+        logging.debug('process: [name: {0} PID: {1}], thread: {2} -> parse_request: OK, code: {3}'.format(
+            self.process, self.pid, self.thread, code))
         if code != OK:
             return self.send_response(code)
+        code = self.set_response_headers()
+        logging.debug('process: [name: {0} PID: {1}], thread: {2} -> set_response_headers: OK, code: {2}'.format(
+            self.process, self.pid, self.thread, code))
         if self.method.upper() == 'GET':
-            return self.send_response(self.do_GET())
+            return self.send_response(self.set_response_body() if code == OK else code)
         else:
-            return self.send_response(self.do_HEAD())
+            return self.send_response(code)
 
     def parse_request(self, data):
         request_lines = data.split('\r\n')
@@ -116,13 +132,6 @@ class HttpHandler:
             key, value = request_lines[i].split(':', 1)
             self.request_headers[key.lower()] = value.strip()
         return OK
-
-    def do_GET(self):
-        code = self.set_response_headers()
-        return self.set_response_body() if code == OK else code
-
-    def do_HEAD(self):
-        return self.set_response_headers()
 
     def set_header(self, key, value):
         self.response_headers[key] = value
@@ -171,12 +180,15 @@ class HttpHandler:
             self.set_header('Content-Length', '0')
         answer = answer + '\r\n'.join(['{0}: {1}'.format(item[0], item[1]) for item in self.response_headers.items()])
         answer += '\r\n\r\n'
-
         answer = bytes(answer, 'utf-8')
         if self.response_body:
             answer += self.response_body
         self.sock.sendall(answer)
-
+        logging.info(
+            'Process: {0}, thread: {1} -> address: {2} | request: "{3} {4} {5}" | code: {6} {7} | size: {8}'.format(
+                self.process, self.thread, self.client_address[0], self.method, self.response_path,
+                self.protocol, code, RESPONSE_CODES[code], self.response_headers['Content-Length']))
+                     
     def finish(self):
         self.sock.close()
         logging.debug('Process: {0}, thread: {1} -> The HttpHandler is closed.'.format(self.process, self.thread))
@@ -184,12 +196,15 @@ class HttpHandler:
 
 class WebServer:
 
-    def __init__(self, host='localhost', port=8080, document_root='DOCUMENT_ROOT', http_handler=HttpHandler):
+    def __init__(self, host='localhost', port=80, document_root='DOCUMENT_ROOT', http_handler=HttpHandler):
         self.host = host
         self.port = port
         self.document_root = os.path.join(os.path.dirname(os.path.abspath(__file__)), document_root)
+        if not os.path.isdir(self.document_root):
+            os.makedirs(self.document_root)
         self.http_handler = http_handler
         self.process = multiprocessing.current_process().name
+        self.pid = os.getpid()
         self.socket = None
 
     def create_connection(self):
@@ -198,22 +213,29 @@ class WebServer:
         self.socket.bind((self.host, self.port))
         self.socket.listen(NUM_CONNECTIONS)
 
+    def do_request(self, sock, address):
+        request = self.http_handler(sock, address, self.document_root)
+        request.run()
+
     def serve_forever(self):
-        self.create_connection()
-        logging.debug('Connection is created: '
-                      'host: {0} | port: {1} | root_dir: {2}'.format(self.host, self.port, self.document_root))
+        try:
+            self.create_connection()
+        except socket.error:
+            logging.exception('process: [name: {0} PID: {1}] -> Unexpected socket.error!'.format(self.process,
+                                                                                                 self.pid))
+            return
         while True:
             try:
                 conn, addr = self.socket.accept()
-                logging.debug('Connected: {}'.format(addr))
-                request = self.http_handler(conn, addr, self.document_root)
-                thread = threading.Thread(target=request.run())
+                thread = threading.Thread(target=self.do_request, args=(conn, addr))
                 thread.daemon = True
                 thread.start()
-            except socket.error as e:
-                logging.debug('Process: {0} -> ERROR: {1}'.format(self.process, e))
+            except socket.error:
+                logging.exception('process: [name: {0} PID: {1}] -> ERROR:\n'.format(self.process, self.pid))
                 self.server_close()
+                break
 
     def server_close(self):
-        logging.debug('Process: {0} -> server {1} is closed!'.format(self.process, SERVER_NAME))
+        logging.debug('process: [name: {0} PID: {1}] -> server {2} is stopped!'.format(self.process, self.pid,
+                                                                                       SERVER_NAME))
         self.socket.close()

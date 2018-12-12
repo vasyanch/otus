@@ -1,0 +1,79 @@
+OTUServer
+
+Архитектура
+
+Сервер работает на N воркерах. В качестве воркеров выступают процессы. Для создания процессов используется модуль стандартной библиотеки multiprocessing. Внутри каждого процесса для обработки одного запроса создается отдельный поток, в рамках которого парсится запрос, формируется и отправляется ответ. Логика сервера реализована с помощью двух классов: WebServer, HttpHandler. 
+
+WebServer -> слушает сокет, принимает соединение, создает поток
+HttpHandler -> "читает" и парсит запрос, формирует и отправляет ответ
+
+Запуск 
+
+python3 httpd.py [-p port] [-w workers] [-l (debug, info)] [-r path_root_directory] [-f path_to_logfile]
+
+aргументы:
+'-p', '--port', default='80' -> порт
+'-w', '--workers', default='4' -> количество воркеров
+'-l', '--level_log', default='info' -> уровень логирования(debug, info)
+'-r', '--root_document', default='./DOCUMENT_ROOT' -> корневая директория для страниц
+'-f', '--file_log', default='./httpd.log' -> лог-файл сервера OTUServer
+
+Тестирование
+
+тестирование проводилось на машине со следующими характеристиками:
+System: Ubuntu 18.04.1 LTS x86_64
+Kernel: 4.15.0-42-generic  DE: ubuntu:GNOME   Session: ubuntu
+Processor: Intel(R) Core(TM) i5-4200U CPU @ 1.60GHz
+Memory (Gb): 5.7
+
+запуск функциональных тестов:
+python3 httpd.py -p 8080
+pyhon httptest.py 
+
+результаты нагрузочного тестирования на 4-х воркерах: 
+
+ab -n 50000 -c 100 -r http://localhost:8080/httptest/dir2/page.html
+
+
+This is ApacheBench, Version 2.3 <$Revision: 1807734 $>
+Copyright 1996 Adam Twiss, Zeus Technology Ltd, http://www.zeustech.net/
+Licensed to The Apache Software Foundation, http://www.apache.org/
+
+Benchmarking localhost (be patient)
+
+
+Server Software:        OTUServer
+Server Hostname:        localhost
+Server Port:            8080
+
+Document Path:          /httptest/dir2/page.html
+Document Length:        38 bytes
+
+Concurrency Level:      100
+Time taken for tests:   20.369 seconds
+Complete requests:      50000
+Failed requests:        0
+Total transferred:      7400000 bytes
+HTML transferred:       1900000 bytes
+Requests per second:    2454.68 [#/sec] (mean)
+Time per request:       40.738 [ms] (mean)
+Time per request:       0.407 [ms] (mean, across all concurrent requests)
+Transfer rate:          354.78 [Kbytes/sec] received
+
+Connection Times (ms)
+              min  mean[+/-sd] median   max
+Connect:        0    0   0.1      0       3
+Processing:     1   41  28.4     36     216
+Waiting:        0   40  28.4     35     212
+Total:          1   41  28.4     36     216
+
+Percentage of the requests served within a certain time (ms)
+  50%     36
+  66%     50
+  75%     60
+  80%     66
+  90%     80
+  95%     92
+  98%    108
+  99%    120
+ 100%    216 (longest request)
