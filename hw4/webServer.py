@@ -42,7 +42,7 @@ ALLOWED_CONTENT_TYPES = (
 SERVER_NAME = 'OTUServer'
 TIMEOUT = 5
 NUM_CONNECTIONS = 1000
-
+MAX_THREADS = 4
 
 class HttpHandler:
     def __init__(self, sock, addr, document_root):
@@ -224,16 +224,29 @@ class WebServer:
             logging.exception('process: [name: {0} PID: {1}] -> Unexpected socket.error!'.format(self.process,
                                                                                                  self.pid))
             return
+        pool = []
         while True:
             try:
                 conn, addr = self.socket.accept()
-                thread = threading.Thread(target=self.do_request, args=(conn, addr))
-                thread.daemon = True
-                thread.start()
+                if len(pool) < MAX_THREADS:
+                    thread = threading.Thread(target=self.do_request, args=(conn, addr))
+                    thread.daemon = True
+                    thread.start()
+                    pool.append(thread)
+                else:
+                    self.do_request(conn, addr)
+                self.check_pool(pool)
             except socket.error:
                 logging.exception('process: [name: {0} PID: {1}] -> ERROR:\n'.format(self.process, self.pid))
                 self.server_close()
                 break
+
+    def check_pool(self, pool):
+        for t in pool[:]:
+            if not t.is_alive():
+                pool.remove(t)
+            
+        
 
     def server_close(self):
         logging.debug('process: [name: {0} PID: {1}] -> server {2} is stopped!'.format(self.process, self.pid,

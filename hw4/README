@@ -2,7 +2,7 @@ OTUServer
 
 Архитектура
 
-Сервер работает на N воркерах. В качестве воркеров выступают процессы. Для создания процессов используется модуль стандартной библиотеки multiprocessing. Внутри каждого процесса для обработки одного запроса создается отдельный поток, в рамках которого парсится запрос, формируется и отправляется ответ. Логика сервера реализована с помощью двух классов: WebServer, HttpHandler. 
+Сервер работает на N воркерах. В качестве воркеров выступают процессы. Для создания процессов используется модуль стандартной библиотеки multiprocessing. Внутри каждого процесса для обработки одного запроса создается отдельный поток, в рамках которого парсится запрос, формируется и отправляется ответ. Количество потоков ограниченно, максимальный размер пула потоков содержится в глобальной переменной MAX_THREADS модуля webServer. Логика сервера реализована с помощью двух классов: WebServer, HttpHandler. 
 
 WebServer -> слушает сокет, принимает соединение, создает поток
 HttpHandler -> "читает" и парсит запрос, формирует и отправляет ответ
@@ -30,7 +30,7 @@ Memory (Gb): 5.7
 python3 httpd.py -p 8080
 pyhon httptest.py 
 
-результаты нагрузочного тестирования на 4-х воркерах: 
+результаты нагрузочного тестирования на 4-х воркерах, MAX_THREADS = 4: 
 
 ab -n 50000 -c 100 -r http://localhost:8080/httptest/dir2/page.html
 
@@ -50,30 +50,30 @@ Document Path:          /httptest/dir2/page.html
 Document Length:        38 bytes
 
 Concurrency Level:      100
-Time taken for tests:   20.369 seconds
+Time taken for tests:   20.432 seconds
 Complete requests:      50000
 Failed requests:        0
 Total transferred:      7400000 bytes
 HTML transferred:       1900000 bytes
-Requests per second:    2454.68 [#/sec] (mean)
-Time per request:       40.738 [ms] (mean)
-Time per request:       0.407 [ms] (mean, across all concurrent requests)
-Transfer rate:          354.78 [Kbytes/sec] received
+Requests per second:    2447.18 [#/sec] (mean)
+Time per request:       40.863 [ms] (mean)
+Time per request:       0.409 [ms] (mean, across all concurrent requests)
+Transfer rate:          353.69 [Kbytes/sec] received
 
 Connection Times (ms)
               min  mean[+/-sd] median   max
 Connect:        0    0   0.1      0       3
-Processing:     1   41  28.4     36     216
-Waiting:        0   40  28.4     35     212
-Total:          1   41  28.4     36     216
+Processing:     0   41  31.5     33     234
+Waiting:        0   40  31.5     32     234
+Total:          0   41  31.5     33     234
 
 Percentage of the requests served within a certain time (ms)
-  50%     36
-  66%     50
+  50%     33
+  66%     49
   75%     60
-  80%     66
-  90%     80
-  95%     92
-  98%    108
-  99%    120
- 100%    216 (longest request)
+  80%     67
+  90%     86
+  95%    102
+  98%    116
+  99%    123
+ 100%    234 (longest request)
