@@ -44,6 +44,7 @@ TIMEOUT = 5
 NUM_CONNECTIONS = 1000
 MAX_THREADS = 4
 
+
 class HttpHandler:
     def __init__(self, sock, addr, document_root):
         self.sock = sock
@@ -92,6 +93,11 @@ class HttpHandler:
     def handler(self):
         try:
             request = self.read_all()
+        except socket.timeout:
+            self.keep_alive = False
+            logging.info('process: [name: {0} PID: {1}], thread: {2} -> timeout'.format(self.process, self.pid,
+                                                                                        self.thread))
+            return
         except socket.error:
             self.keep_alive = False
             logging.exception('process: [name: {0} PID: {1}], thread: {2} -> ERROR:'.format(self.process, self.pid,
@@ -206,6 +212,7 @@ class WebServer:
         self.process = multiprocessing.current_process().name
         self.pid = os.getpid()
         self.socket = None
+        self.pool = []
 
     def create_connection(self):
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -224,29 +231,26 @@ class WebServer:
             logging.exception('process: [name: {0} PID: {1}] -> Unexpected socket.error!'.format(self.process,
                                                                                                  self.pid))
             return
-        pool = []
+        try:
+            for i in range(MAX_THREADS):
+                thread = threading.Thread(target=self.serve_thread)
+                thread.daemon = True
+                thread.start()
+                self.pool.append(thread)
+            while True:
+                pass
+        except socket.error:
+            logging.exception('process: [name: {0} PID: {1}] -> ERROR:\n'.format(self.process, self.pid))
+            self.server_close()
+
+    def serve_thread(self):
         while True:
             try:
                 conn, addr = self.socket.accept()
-                if len(pool) < MAX_THREADS:
-                    thread = threading.Thread(target=self.do_request, args=(conn, addr))
-                    thread.daemon = True
-                    thread.start()
-                    pool.append(thread)
-                else:
-                    self.do_request(conn, addr)
-                self.check_pool(pool)
+                self.do_request(conn, addr)
             except socket.error:
-                logging.exception('process: [name: {0} PID: {1}] -> ERROR:\n'.format(self.process, self.pid))
-                self.server_close()
-                break
-
-    def check_pool(self, pool):
-        for t in pool[:]:
-            if not t.is_alive():
-                pool.remove(t)
-            
-        
+                logging.exception('process: [name: {0} PID: {1}], thread {2}-> '
+                                  'ERROR:\n'.format(self.process, self.pid, threading.current_thread().name))
 
     def server_close(self):
         logging.debug('process: [name: {0} PID: {1}] -> server {2} is stopped!'.format(self.process, self.pid,

@@ -2,7 +2,7 @@ OTUServer
 
 Архитектура
 
-Сервер работает на N воркерах. В качестве воркеров выступают процессы. Для создания процессов используется модуль стандартной библиотеки multiprocessing. Внутри каждого процесса для обработки одного запроса создается отдельный поток, в рамках которого парсится запрос, формируется и отправляется ответ. Количество потоков ограниченно, максимальный размер пула потоков содержится в глобальной переменной MAX_THREADS модуля webServer. Логика сервера реализована с помощью двух классов: WebServer, HttpHandler. 
+Сервер работает на N воркерах. В качестве воркеров выступают процессы. Для создания процессов используется модуль стандартной библиотеки multiprocessing. Внутри каждого процесса создается пул потоков, каждый поток слушает серверный сокет принимает запросы, парсит их, формирует и отправляет ответ. Количество потоков ограниченно, максимальный размер пула потоков содержится в глобальной переменной MAX_THREADS модуля webServer. Логика сервера реализована с помощью двух классов: WebServer, HttpHandler. 
 
 WebServer -> слушает сокет, принимает соединение, создает поток
 HttpHandler -> "читает" и парсит запрос, формирует и отправляет ответ
@@ -50,30 +50,30 @@ Document Path:          /httptest/dir2/page.html
 Document Length:        38 bytes
 
 Concurrency Level:      100
-Time taken for tests:   20.432 seconds
+Time taken for tests:   18.226 seconds
 Complete requests:      50000
 Failed requests:        0
 Total transferred:      7400000 bytes
 HTML transferred:       1900000 bytes
-Requests per second:    2447.18 [#/sec] (mean)
-Time per request:       40.863 [ms] (mean)
-Time per request:       0.409 [ms] (mean, across all concurrent requests)
-Transfer rate:          353.69 [Kbytes/sec] received
+Requests per second:    2743.36 [#/sec] (mean)
+Time per request:       36.452 [ms] (mean)
+Time per request:       0.365 [ms] (mean, across all concurrent requests)
+Transfer rate:          396.50 [Kbytes/sec] received
 
 Connection Times (ms)
               min  mean[+/-sd] median   max
-Connect:        0    0   0.1      0       3
-Processing:     0   41  31.5     33     234
-Waiting:        0   40  31.5     32     234
-Total:          0   41  31.5     33     234
+Connect:        0    0   0.1      0       4
+Processing:     0   36  33.1     26     228
+Waiting:        0   34  32.1     24     223
+Total:          0   36  33.1     26     228
 
 Percentage of the requests served within a certain time (ms)
-  50%     33
-  66%     49
-  75%     60
-  80%     67
-  90%     86
+  50%     26
+  66%     43
+  75%     55
+  80%     63
+  90%     85
   95%    102
-  98%    116
-  99%    123
- 100%    234 (longest request)
+  98%    123
+  99%    137
+ 100%    228 (longest request)
