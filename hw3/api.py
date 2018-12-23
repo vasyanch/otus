@@ -133,11 +133,14 @@ class DateField(Field):
 
     def check(self, value):
         value = super(DateField, self).check(value)
-        if value is not None and isinstance(value, (str, unicode)):
-            try:
-                value = datetime.datetime.strptime(value, '%d.%m.%Y')
-            except ValueError:
-                raise ValidationError('{} is invalid!'.format(self.__class__.__name__))
+        if isinstance(value, (str, unicode)) or value is None:
+            if value is not None and len(value) > 0:
+                try:
+                    value = datetime.datetime.strptime(value, '%d.%m.%Y')
+                except ValueError:
+                    raise ValidationError('{} is invalid!'.format(self.__class__.__name__))
+        else:
+            raise ValidationError('{} is invalid!'.format(self.__class__.__name__))
         return value
 
 

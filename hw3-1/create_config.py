@@ -9,10 +9,10 @@ def create_config(path):
     config.add_section('Config_api')
     config.set('Config_api', 'LOGGING_TO_FILE', 'api.log')
     config.set('Config_api', 'PORT', '8080')
-    config.set('Config_api', 'LOGGING_LEVEL', 'DEBUG')
+    config.set('Config_api', 'LOGGING_LEVEL', 'INFO')
     config.set('Config_api', 'STORE_PORT', '6379')
     config.set('Config_api', 'STORE_URL', 'localhost')
-    config.set('Config_api', 'NUMBER_DB', '1')
+    config.set('Config_api', 'NUMBER_DB', '0')
     config.set('Config_api', 'NUM_RECONNECT', '10')
 
     with open(path, 'w') as config_file:

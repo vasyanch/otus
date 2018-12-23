@@ -69,15 +69,6 @@ def parse_config(default_config, path):
     return default_config
 
 
-parser_config = argparse.ArgumentParser()
-parser_config.add_argument('-c', '--config', default="{}/config_api".format(os.path.dirname(os.path.abspath(__file__))))
-path_config = parser_config.parse_args()  # path_config.config -> path to config file
-try:
-    config = parse_config(config, path_config.config)
-except Exception:
-    raise Exception("Bad config!")
-
-
 class ValidationError(Exception):
     pass
 
@@ -147,11 +138,14 @@ class DateField(Field):
 
     def check(self, value):
         value = super(DateField, self).check(value)
-        if value is not None and isinstance(value, (str, unicode)):
-            try:
-                value = datetime.datetime.strptime(value, '%d.%m.%Y')
-            except ValueError:
-                raise ValidationError('{} is invalid!'.format(self.__class__.__name__))
+        if isinstance(value, (str, unicode)) or value is None:
+            if value is not None and len(value) > 0:
+                try:
+                    value = datetime.datetime.strptime(value, '%d.%m.%Y')
+                except ValueError:
+                    raise ValidationError('{} is invalid!'.format(self.__class__.__name__))
+        else:
+            raise ValidationError('{} is invalid!'.format(self.__class__.__name__))
         return value
 
 
@@ -190,18 +184,21 @@ class Request(object):
     def __init__(self, **kwargs):
         for key in kwargs:
             self.__setattr__(key, kwargs[key])
+        self.invalid_fields = []
+        self.error_message = None
 
     def is_valid(self):
-        invalid_fields = []
         for key, cls in self.__class__.__dict__.items():
             if not isinstance(cls, Field):
                 continue
-            value = self.__getattribute__(key) if key in self.__dict__ else None
+            value = getattr(self, key) if key in self.__dict__ else None
             try:
                 self.__setattr__(key, cls.check(value))
             except ValidationError:
-                invalid_fields.append(key)
-        return invalid_fields if invalid_fields else True
+                self.invalid_fields.append(key)
+        if self.invalid_fields:
+            self.error_message = '({0}) this argument(s) is bad'.format(', '.join(self.invalid_fields))
+        return False if self.invalid_fields else True
 
 
 class ClientsInterestsRequest(Request):
@@ -218,12 +215,13 @@ class OnlineScoreRequest(Request):
     gender = GenderField(required=False, nullable=True)
 
     def is_valid(self):
-        invalid_fields = super(OnlineScoreRequest, self).is_valid()
-        if invalid_fields is not True:
-            return invalid_fields
+        if not super(OnlineScoreRequest, self).is_valid():
+            return False
         for i, j in (('phone', 'email'), ('first_name', 'last_name'), ('gender', 'birthday')):
-            if (self.__getattribute__(i) is not None) and (self.__getattribute__(j) is not None):
+            if getattr(self, i) is not None and getattr(self, j) is not None:
                 return True
+        self.error_message = ('Request is bad! At least one pair of fields from {(phone, email), '
+                              '(first_name, last_name), (gender, birthday)}  should be not empty!')
         return False
 
 
@@ -249,53 +247,48 @@ def check_auth(request):
     return False
 
 
+def clients_interests(req, context, storage):
+    response, code = {}, OK
+    method = ClientsInterestsRequest(**req.arguments)
+    if not method.is_valid():
+        return method.error_message, INVALID_REQUEST
+    context['nclients'] = len(method.client_ids)
+    for i in method.client_ids:
+        response[i] = scoring.get_interests(storage, i)
+    return response, code
+
+
+def online_score(req, context, storage):
+    response, code = {}, OK
+    method = OnlineScoreRequest(**req.arguments)
+    if not method.is_valid():
+        return method.error_message, INVALID_REQUEST
+    context['has'] = req.arguments.keys()
+    arguments = {}
+    for i in req.arguments.keys():
+        arguments[i] = getattr(method, i)
+    response['score'] = 42 if req.is_admin else scoring.get_score(storage, **arguments)
+    return response, code
+
+
 def method_handler(request, ctx, store):
-
-    def clients_interests(req, context, storage):
-        response, code = {}, OK
-        method = ClientsInterestsRequest(**req.arguments)
-        validation = method.is_valid()
-        if validation is not True:
-            return '({0}) this argument(s) is bad'.format(', '.join(validation)), 422
-        context['nclients'] = len(method.client_ids)
-        for i in method.client_ids:
-            response[i] = scoring.get_interests(storage, i)
-        return response, code
-
-    def online_score(req, context, storage):
-        response, code = {}, OK
-        method = OnlineScoreRequest(**req.arguments)
-        validation = method.is_valid()
-        if validation is not True:
-            return ('Request is bad! At least one pair of fields from {(phone, email), '
-                    '(first_name, last_name), (gender, birthday)}  should be not empty!', 422) if not validation \
-                else ('({0}) this argument(s) is bad'.format(', '.join(validation)), 422)
-        context['has'] = req.arguments.keys()
-        arguments = {}
-        for i in req.arguments.keys():
-            arguments[i] = method.__getattribute__(i)
-        response['score'] = 42 if req.is_admin else scoring.get_score(storage, **arguments)
-        return response, code
-
     methods = dict(clients_interests=clients_interests, online_score=online_score)
     request = MethodRequest(**request['body'])
-    valid = request.is_valid()
-    if valid is not True:
-        return '({0}) this field(s) is bad'.format(' '.join(valid)), 422
+    if not request.is_valid():
+        return request.error_message, INVALID_REQUEST
     if not check_auth(request):
-        return 'Forbidden', 403
+        return 'Forbidden', FORBIDDEN
     try:
         return methods[request.method](request, ctx, store)
     except KeyError:
-        return 'No such method {}!'.format(request.method), 422
+        return 'No such method {}!'.format(request.method), INVALID_REQUEST
 
 
 class MainHTTPHandler(BaseHTTPRequestHandler):
     router = {
         "method": method_handler
     }
-    store = Storage(host=config['STORE_URL'], port=config['STORE_PORT'], db=config['NUMBER_DB'],
-                    reconnect=config['NUM_RECONNECT'])
+    store = None
 
     def get_request_id(self, headers):
         return headers.get('HTTP_X_REQUEST_ID', uuid.uuid4().hex)
@@ -337,8 +330,18 @@ class MainHTTPHandler(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
+    parser_config = argparse.ArgumentParser()
+    parser_config.add_argument('-c', '--config',
+                               default="{}/config_api".format(os.path.dirname(os.path.abspath(__file__))))
+    path_config = parser_config.parse_args()  # path_config.config -> path to config file
+    try:
+        config = parse_config(config, path_config.config)
+    except Exception:
+        raise Exception("Bad config!")
     logging.basicConfig(filename=config['LOGGING_TO_FILE'], level=config['LOGGING_LEVEL'],
                         format='[%(asctime)s] %(levelname).1s %(message)s', datefmt='%Y.%m.%d %H:%M:%S')
+    MainHTTPHandler.store = Storage(host=config['STORE_URL'], port=config['STORE_PORT'], db=config['NUMBER_DB'],
+                                    num_reconnect=config['NUM_RECONNECT'])
     server = HTTPServer(("localhost", config['PORT']), MainHTTPHandler)
     logging.info("Starting server at %s" % config['PORT'])
     try:
