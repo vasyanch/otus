@@ -17,7 +17,8 @@ def get_score(store, phone=None, email=None, birthday=None, gender=None, first_n
     key = "uid:" + hashlib.md5("".join(key_parts)).hexdigest()
     # try get from cache,
     # fallback to heavy calculation in case of cache miss
-    score = store.cache_get(key) or 0
+    value = store.cache_get(key)
+    score = float(value) if value else 0
     if score:
         return score
     if phone:

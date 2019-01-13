@@ -6,4 +6,5 @@ store_port = 6379
 store_url = localhost
 number_db = 0
 num_reconnect = 10
+timeout = 2
 

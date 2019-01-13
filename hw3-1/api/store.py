@@ -33,14 +33,16 @@ def cache(fun):
 
 
 class Storage(object):
-    def __init__(self, host='localhost', port=6379, db=0, num_reconnect=10):
+    def __init__(self, host='localhost', port=6379, db=0, num_reconnect=10, timeout=2):
         self.host = host
         self.port = port
         self.db = db
         self.reconnect = num_reconnect
+        self.timeout = timeout
         self.interests = ["cars", "pets", "travel", "hi-tech", "sport",
                           "music", "books", "tv", "cinema", "geek", "otus"]
-        self.storage = redis.Redis(host=self.host, port=self.port, db=self.db)
+        self.storage = redis.Redis(host=self.host, port=self.port, db=self.db, socket_timeout=self.timeout,
+                                   socket_connect_timeout=self.timeout)
 
     def check_connect(self):
         i = 0
@@ -66,7 +68,7 @@ class Storage(object):
     @reconnect
     def cache_get(self, key):
         val = self.storage.get(key)
-        return float(val) if val is not None else None 
+        return val if val is not None else None
 
     @cache
     @reconnect

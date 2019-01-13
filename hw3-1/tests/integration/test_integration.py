@@ -6,7 +6,7 @@ import unittest
 import json
 import hashlib
 import redis
-import api
+from api import api
 
 from datetime import datetime
 
@@ -17,7 +17,11 @@ def cases(cases):
         def wrapper(*args):
             for c in cases:
                 new_args = args + (c if isinstance(c, tuple) else (c,))
-                f(*new_args)
+                try:
+                    f(*new_args)
+                except Exception as e:
+                    print '\nTest --> {0}\nthis case: ({1}) is broken!'.format(f.__name__, c)
+                    raise e
         return wrapper
     return decorator
 
@@ -29,6 +33,16 @@ class TestSuite(unittest.TestCase):
     def test_z_delete_keys(self):
         for i in self.keys_for_del:
             self.store.storage.delete(i)
+
+    def keys_for_test(self):
+        interests = ["cars", "pets", "travel", "hi-tech"]
+        key_parts = [['Mikhaylov', 'Vasily'], ['vasyanch852@gmail.com', '79151950017 '], ['20180101', '1']]
+        for k in range(3):
+            key_online = "uid:" + hashlib.md5("".join(key_parts[k])).hexdigest()
+            self.keys_for_del.append('i:{}'.format(str(k)))
+            self.keys_for_del.append(key_online)
+            self.store.storage.set('i:{}'.format(str(k)), json.dumps([interests[3], interests[k]]))
+            self.store.storage.set(key_online, 10)
 
     def setUp(self):
         self.context = {}
@@ -49,26 +63,11 @@ class TestSuite(unittest.TestCase):
             msg = request.get("account", "") + request.get("login", "") + api.SALT
             request["token"] = hashlib.sha512(msg).hexdigest()
 
-    def check_field(self, cls_field, value):
-        try:
-            return cls_field.check(value)
-        except api.ValidationError:
-            return api.ValidationError()
-
-    def keys_for_test(self):
-        interests = ["cars", "pets", "travel", "hi-tech"]
-        key_parts = [['Mikhaylov', 'Vasily'], ['vasyanch852@gmail.com', '79151950017 '], ['20180101', '1']]
-        for k in range(3):
-            key_online = "uid:" + hashlib.md5("".join(key_parts[k])).hexdigest()
-            self.keys_for_del.append('i:{}'.format(str(k)))
-            self.keys_for_del.append(key_online)
-            self.store.storage.set('i:{}'.format(str(k)), json.dumps([interests[3], interests[k]]))
-            self.store.storage.set(key_online, 10)
-
     def check_store(self, con_store, method, keys_online, ints):
         ans = None
         if method == 'cache_get':
             ans = con_store.cache_get("uid:" + hashlib.md5("".join(keys_online)).hexdigest())
+            ans = int(ans) if ans else None
         if method == 'get':
             try:
                 ans = con_store.get('i:{}'.format(str(ints[1])))
@@ -125,131 +124,6 @@ class TestSuite(unittest.TestCase):
         self.assertEqual(self.context.get("nclients"), len(arguments["client_ids"]))
         self.assertEqual(response[0], ['hi-tech', 'cars'])
 
-    @cases([1, [1], {1: 1}, 'a'*256, '', 0, [], {}])
-    def test_bad_char_field(self, value):
-        value = self.check_field(api.CharField(), value)
-        self.assertIsInstance(value, api.ValidationError)
-
-    @cases([None, ''])
-    def test_nullvalue_char(self, value):
-        res = self.check_field(api.CharField(required=True), value)
-        self.assertIsInstance(res, api.ValidationError)
-        res = self.check_field(api.CharField(nullable=True), value)
-        self.assertEqual(res, value)
-
-    @cases(['otus', 'a'*255])
-    def test_char_field_ok(self, value):
-        res = self.check_field(api.CharField(), value)
-        self.assertEqual(res, value)
-
-    @cases([1, [1], 'a', '', [], {}])
-    def test_arg_field_bad(self, value):
-        res = self.check_field(api.ArgumentsField(), value)
-        self.assertIsInstance(res, api.ValidationError)
-
-    @cases([None, {}])
-    def test_nullvalue_args(self, value):
-        res = self.check_field(api.ArgumentsField(required=True), value)
-        self.assertIsInstance(res, api.ValidationError)
-        res = self.check_field(api.ArgumentsField(nullable=True), value)
-        self.assertEqual(res, value)
-
-    @cases([{'account': 'vasya', 'gender': 1}])
-    def test_arg_field_ok(self, value):
-        res = self.check_field(api.ArgumentsField(), value)
-        self.assertEqual(res, value)
-
-    @cases([1, [1], 'a', '', [], {}])
-    def test__email_field_bad(self, value):
-        res = self.check_field(api.EmailField(), value)
-        self.assertIsInstance(res, api.ValidationError)
-
-    @cases([None, ''])
-    def test_nullvalue_email(self, value):
-        res = self.check_field(api.EmailField(required=True), value)
-        self.assertIsInstance(res, api.ValidationError)
-        res = self.check_field(api.EmailField(nullable=True), value)
-        self.assertEqual(res, value)
-
-    @cases(['opex23@inbox.ru', 'v@mail.ru'])
-    def test_email_field_ok(self, value):
-        res = self.check_field(api.EmailField(), value)
-        self.assertEqual(res, value)
-
-    @cases([1, [1], 'a', '', [], {}, 'a'*11, '7'+'8'*11, '8'*11,
-            89151950018, 123, 789, 791519511177])
-    def test_phone_field_bad(self, value):
-        res = self.check_field(api.PhoneField(), value)
-        self.assertIsInstance(res, api.ValidationError)
-
-    @cases([None, ''])
-    def test_nullvalue_phone(self, value):
-        res = self.check_field(api.PhoneField(required=True), value)
-        self.assertIsInstance(res, api.ValidationError)
-        res = self.check_field(api.PhoneField(nullable=True), value)
-        self.assertEqual(res, value)
-
-    @cases([79151950018, '79151950018'])
-    def test_phone_field_ok(self, value):
-        res = self.check_field(api.PhoneField(), value)
-        self.assertEqual(res, str(value))
-
-    @cases([1, [1], 'a', '', [], {}, '2014.01.01', '33.01.2014', '01.01.001',
-            '01.32.2014', '12.20.2014'])
-    def test_date_field_bad(self, value):
-        res = self.check_field(api.DateField(), value)
-        self.assertIsInstance(res, api.ValidationError)
-
-    @cases([None, ''])
-    def test_nullable_date(self, value):
-        res = self.check_field(api.DateField(required=True), value)
-        self.assertIsInstance(res, api.ValidationError)
-        res = self.check_field(api.DateField(nullable=True), value)
-        self.assertEqual(res, value)
-
-    @cases(['01.01.2014', '30.12.2018'])
-    def test_date_field_ok(self, value):
-        res = self.check_field(api.DateField(), value)
-        self.assertEqual(res, datetime.strptime(value, '%d.%m.%Y'))
-
-    @cases(['01.11.1948', '01.01.1900', '01.01.2020'])
-    def test_birth_field_bad(self, value):
-        res = self.check_field(api.BirthDayField(), value)
-        self.assertIsInstance(res, api.ValidationError)
-
-    @cases(['01.10.1991', '13.12.2018'])
-    def test_birth_field_ok(self, value):
-        res = self.check_field(api.BirthDayField(), value)
-        self.assertEqual(res, datetime.strptime(value, '%d.%m.%Y'))
-
-    @cases([[1], 'a', '', [], {}, 5, -1])
-    def test_gender_field_bad(self, value):
-        res = self.check_field(api.GenderField(), value)
-        self.assertIsInstance(res, api.ValidationError)
-
-    @cases([0, 1, 2])
-    def test_gender_field_ok(self, value):
-        res = self.check_field(api.GenderField(), value)
-        self.assertEqual(res, value)        
-
-    @cases(
-        [1, {1: 1}, 'a', {1, 2}, 0, '', [], {}, ['a'], [[1]], [{1: 1}], [(1,)], [[]], [()]])
-    def test_clientids_field_bad(self, value):
-        res = self.check_field(api.ClientIDsField(), value)
-        self.assertIsInstance(res, api.ValidationError)
-
-    @cases([None, []])
-    def test_nullable_clinerids(self, value):
-        res = self.check_field(api.ClientIDsField(required=True), value)
-        self.assertIsInstance(res, api.ValidationError)
-        res = self.check_field(api.ClientIDsField(nullable=True), value)
-        self.assertEqual(res, value)
-
-    @cases([[1], [1, 2]])
-    def test_clientids_field_ok(self, value):
-        res = self.check_field(api.ClientIDsField(), value)
-        self.assertEqual(res, value)
-    
     def test_empty_request(self):
         _, code = self.get_response({})
         self.assertEqual(api.INVALID_REQUEST, code)

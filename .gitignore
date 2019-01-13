@@ -7,8 +7,10 @@ log
 response
 **.ipynb_checkpoints
 task
-requests
 test_config_api
+venv
+hw3/requests
+hw3-1/requests
 hw3-1/test_fields.py
 hw3-1/config_api_test
 hw3-1/api.log
@@ -17,7 +19,7 @@ hw4/test_result
 hw4/DOCUMENT_ROOT
 hw5/django-polls
 hw5/hardcode
-hw5/venv
+
 
 
 
