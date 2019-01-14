@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <!-- Required meta tags -->
+    <meta http-equiv="content-type" content="text/html; charset=UTF-8">
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+
+    <!-- Bootstrap CSS -->
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.2.1/css/bootstrap.min.css" integrity="sha384-GJzZqFGwb1QTTN6wy59ffF1BuGJpLSa9DkKMp0DgiMDm4iYMj70gZWKYbI706tWS" crossorigin="anonymous">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/semantic-ui/2.2.10/semantic.min.css">
+
+    <title>hasker</title>
+  </head>
+  <body>
+    <div class="ui menu">
+        <a href="/" class="item">
+            Hasker
+        </a>
+        <div class="right menu">
+            <div class="item">
+                <div class="ui icon input">
+                    <form method="get" action="{% url 'search' %}">
+                        <input type="text" name="q" maxlength="254" placeholder="Search...">
+                        <i class="search link icon"></i>
+                    </form>
+                </div>
+            </div>
+            {% if user.is_authenticated %}
+                <a href="{% url 'ask' %}" class="item">
+                    Ask Question!
+                </a>
+                <div class="item">
+                    <img class="ui mini image" style="margin-right: 10px;" src="{{ user.profile.avatar.url }}">
+                    <a href="/profile/{{ user.id }}/">{{ user.username }}</a>
+                </div>
+                <a href="{% url 'logout' %}" class="item">
+                    <div class="ui primary button">Logout</div>
+                </a>
+            {% else %}
+                <a href="{% url 'signup' %}" class="item">
+			        <div class="ui primary button">Sign up</div>
+		        </a>
+                <a href="{% url 'login' %}" class="item">
+			        <div class="ui button">Log-in</div>
+		        </a>
+            {% endif %}
+        </div>
+	</div>
+    <div class="container">
+      <div class="row">
+        <div class="col-md-8">
+            {% block content %}{% endblock %}
+        </div>
+        <div class="col-md-4">
+          <h3>Trending</h3>
+                {% for question in trending %}
+                <div class="item">
+                    <i class="ui label">{{ question.rating}}</i>
+                    <a href="{{ question.get_url }}">{{ question.title }}</a>
+                </div>
+                {% endfor %}
+        </div>
+      </div>
+    </div>
+
+    <!-- Optional JavaScript -->
+    <!-- jQuery first, then Popper.js, then Bootstrap JS -->
+    <script src="https://code.jquery.com/jquery-3.3.1.slim.min.js" integrity="sha384-q8i/X+965DzO0rT7abK41JStQIAqVgRVzpbzo5smXKp4YfRvH+8abtTE1Pi6jizo" crossorigin="anonymous"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.14.6/umd/popper.min.js" integrity="sha384-wHAiFfRlMFy6i5SRaxvfOCifBUQy1xHdJ/yoi7FRNXMRBu5WHdZYu1hA6ZOblgut" crossorigin="anonymous"></script>
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.2.1/js/bootstrap.min.js" integrity="sha384-B0UglyR+jN6CkvvICOB2joaf5I4l3gm9GU6Hc1og6Ls7i6U/mkkaduKaBhlAXv9k" crossorigin="anonymous"></script>
+  </body>
+</html>

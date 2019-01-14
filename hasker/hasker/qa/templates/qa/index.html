@@ -1,0 +1,43 @@
+{% extends "qa/base.html" %}
+
+{% block content %}
+  <h1>
+      <a href="/">New questions</a>
+      <a href="/index/pop" class="text-muted">Hot questions</a>
+  </h1>
+  <hr>
+  {% for q in list_questions %}
+    <dl class="row">
+      <dd class="col-sm-2">{{ q.rating }}<div>votes</div></dd>
+      <dd class="col-sm-2">{{ q.answer_set.count }}<div>answers</div></dd>
+      <dt class="col-sm-6">
+        <a href="/question/{{ q.id }}/"><h3>{{ q.title }}</h3></a>
+        {% for tag in q.tags.all %}
+          <span class="badge badge-success">{{ tag.text }}</span>
+        {% endfor %}
+      </dt>
+      <dt class="col-sm-2">
+        <a href ="/profile/{{q.author.id}}/">{{q.author.username}}</a>
+      </dt>
+    </dl>
+    <hr>
+  {% endfor %}
+  {% if user.is_authenticated %}
+    <h2>{{user.username}}</h2>
+  {% else %}
+    <h3>Anon</h3>
+  {% endif %}
+
+
+  <nav><ul class="pagination">
+    {% for p in paginator.page_range %}
+      {% if p == page.number %}
+        <li class="active">
+      {% else %}
+        <li>
+      {% endif %}
+      <a href="{{ paginator.baseurl }}{{ p }}">{{ p }}</a>
+      </li>
+    {% endfor %}
+  </ul></nav>
+{% endblock %}

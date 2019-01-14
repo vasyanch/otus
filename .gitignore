@@ -19,7 +19,7 @@ hw4/test_result
 hw4/DOCUMENT_ROOT
 hw5/django-polls
 hw5/hardcode
-
-
-
+hasker/hasker/db.sqlite3
+hasker/admin
+hasker/mysql
 
