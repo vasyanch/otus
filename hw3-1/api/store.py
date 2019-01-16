@@ -8,17 +8,17 @@ import logging
 import time
 
 
-def reconnect(fun):
-    def wrapper(*args, **kwargs):
+def try_reconnect(fun):
+    def wrapper(self, *args, **kwargs):
         try:
             logging.debug('Function: {}'.format(fun.__name__))
-            return fun(*args, **kwargs)
+            return fun(self, *args, **kwargs)
         except redis.exceptions.ConnectionError:
-            if args[0].check_connect():
-                return fun(*args, **kwargs)
+            if self.reconnect():
+                return fun(self, *args, **kwargs)
             else:
                 logging.error('Connection to redis is failed! Address: host {0}, port {1}, db {2}'.format(
-                    args[0].host, args[0].port, args[0].db))
+                    self.host, self.port, self.db))
                 raise redis.exceptions.ConnectionError
     return wrapper
 
@@ -37,7 +37,7 @@ class Storage(object):
         self.host = host
         self.port = port
         self.db = db
-        self.reconnect = num_reconnect
+        self.num_reconnect = num_reconnect
         self.timeout = timeout
         self.interests = ["cars", "pets", "travel", "hi-tech", "sport",
                           "music", "books", "tv", "cinema", "geek", "otus"]
@@ -45,18 +45,25 @@ class Storage(object):
                                    socket_connect_timeout=self.timeout)
 
     def check_connect(self):
+        try:
+            return self.storage.ping()
+        except redis.exceptions.ConnectionError:
+            return False
+
+    def reconnect(self):
         i = 0
-        while i < self.reconnect:
-            try:
-                return self.storage.ping()
-            except redis.exceptions.ConnectionError:
+        while i < self.num_reconnect:
+            if self.check_connect():
+                return True
+            else:
                 time.sleep(0.3)
                 i += 1
         else:
-            logging.info('{} attempts to connect to the DB is failed!'.format(self.reconnect))
+            logging.info('{} attempts to connect to the DB is failed!'.format(self.num_reconnect))
             return False
 
-    @reconnect
+
+    @try_reconnect
     def get(self, key):
         interests_id = self.storage.get(key)
         if not interests_id:
@@ -65,12 +72,12 @@ class Storage(object):
         return interests_id
 
     @cache
-    @reconnect
+    @try_reconnect
     def cache_get(self, key):
         val = self.storage.get(key)
         return val if val is not None else None
 
     @cache
-    @reconnect
+    @try_reconnect
     def cache_set(self, key, score, time_store):
         self.storage.set(key, score, time_store)
