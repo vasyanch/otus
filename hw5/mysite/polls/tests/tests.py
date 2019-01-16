@@ -5,7 +5,7 @@ from django.utils import timezone
 from django.urls import reverse
 
 # Create your tests here.
-from .models import Question
+from polls.models import Question
 
 def create_question(question_text, days):
     '''

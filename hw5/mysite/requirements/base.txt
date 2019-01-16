@@ -1,0 +1,2 @@
+directory 'requirements' can consist is next files:
+         [base.txt, dev.txt, test.txt, prod.txt]
