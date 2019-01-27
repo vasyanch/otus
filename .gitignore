@@ -20,4 +20,5 @@ hw4/DOCUMENT_ROOT
 hw5/django-polls
 hw5/hardcode
 hw5/mysite/db.sqlite3
+!hw7/homework.ipynb
 

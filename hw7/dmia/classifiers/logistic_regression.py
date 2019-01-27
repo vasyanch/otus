@@ -48,8 +48,7 @@ class LogisticRegression:
             # replacement is faster than sampling without replacement.              #
             #########################################################################
             index_set = [np.random.choice(num_train) for _ in range(batch_size)]
-            X_batch = sparse.csr.csr_matrix((batch_size, dim))
-            #print(X_batch.shape)
+            X_batch = sparse.lil.lil_matrix((batch_size, dim))
             y_batch = np.array([])
             for i, index in enumerate(index_set):
                 X_batch[i] = X[index]
@@ -98,10 +97,9 @@ class LogisticRegression:
         # Implement this method. Store the probabilities of classes in y_proba.   #
         # Hint: It might be helpful to use np.vstack and np.sum                   #
         ###########################################################################
-        y_proba = np.zeros(shape=(X.shape[0], 2))
-        for i, example in enumerate(X):
-            y_prob_class_1 = (1/(1.0 + np.exp(-example.dot(self.w))))[0]
-            y_proba[i] = np.array([1.0 - y_prob_class_1, y_prob_class_1])
+        y_prob_class_1 = (1/(1.0 + np.exp(-X.dot(self.w))))
+        y_proba = np.vstack((1.0 - y_prob_class_1, y_prob_class_1)).T
+
         ###########################################################################
         #                           END OF YOUR CODE                              #
         ###########################################################################
