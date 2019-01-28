@@ -47,12 +47,9 @@ class LogisticRegression:
             # Hint: Use np.random.choice to generate indices. Sampling with         #
             # replacement is faster than sampling without replacement.              #
             #########################################################################
-            index_set = [np.random.choice(num_train) for _ in range(batch_size)]
-            X_batch = sparse.lil.lil_matrix((batch_size, dim))
-            y_batch = np.array([])
-            for i, index in enumerate(index_set):
-                X_batch[i] = X[index]
-                y_batch = np.hstack((y_batch, y[index]))
+            index_set = np.random.choice(num_train, batch_size)
+            X_batch = X[index_set, :]
+            y_batch = y[index_set]
 
             #########################################################################
             #                       END OF YOUR CODE                                #
@@ -123,7 +120,7 @@ class LogisticRegression:
         # Implement this method. Store the predicted labels in y_pred.            #
         ###########################################################################
         y_proba = self.predict_proba(X, append_bias=True)
-        y_pred = np.array([int(i[1] // 0.5) for i in y_proba])
+        y_pred = y_proba.argmax(axis=1)
         ###########################################################################
         #                           END OF YOUR CODE                              #
         ###########################################################################
@@ -142,10 +139,9 @@ class LogisticRegression:
         dw = np.zeros_like(self.w)  # initialize the gradient as zero
         loss = 0
         # Compute loss and gradient. Your code should not contain python loops.
-        sigma = self.predict_proba(X_batch)
-        common_factor = sigma[:, 1] - y_batch
-        dw = dw + common_factor.dot(X_batch.toarray())
-        loss = -np.sum(y_batch * np.log(sigma[:, 1]) + (np.ones(y_batch.shape[0]) - y_batch) * np.log(sigma[:, 0]))
+        sigma = LogisticRegression.sigmoid(X_batch * self.w)
+        dw = (sigma - y_batch) * X_batch
+        loss = -np.dot(y_batch, np.log(sigma)) - np.dot((1 - y_batch), np.log(1 - sigma))
 
         # Right now the loss is a sum over all training examples, but we want it
         # to be an average instead so we divide by num_train.
@@ -158,6 +154,10 @@ class LogisticRegression:
 
 
         return loss, dw
+
+    @staticmethod
+    def sigmoid(x):
+        return 1 / (1 + np.exp(-x))
 
     @staticmethod
     def append_biases(X):
