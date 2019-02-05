@@ -1,2 +1,2 @@
 # otus
-Homeworks for otus course: Developer Python 11-2018
+Homeworks for otus course: Developer Python 10-2018
