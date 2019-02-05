@@ -41,8 +41,13 @@ class Storage(object):
         self.timeout = timeout
         self.interests = ["cars", "pets", "travel", "hi-tech", "sport",
                           "music", "books", "tv", "cinema", "geek", "otus"]
-        self.storage = redis.Redis(host=self.host, port=self.port, db=self.db, socket_timeout=self.timeout,
-                                   socket_connect_timeout=self.timeout)
+        self.storage = redis.Redis(
+            host=self.host,
+            port=self.port,
+            db=self.db,
+            socket_timeout=self.timeout,
+            socket_connect_timeout=self.timeout
+        )
 
     def check_connect(self):
         try:
@@ -62,14 +67,9 @@ class Storage(object):
             logging.info('{} attempts to connect to the DB is failed!'.format(self.num_reconnect))
             return False
 
-
     @try_reconnect
     def get(self, key):
-        interests_id = self.storage.get(key)
-        if not interests_id:
-            interests_id = json.dumps(random.sample(self.interests, 2))
-            self.storage.set(key, interests_id)
-        return interests_id
+        return self.storage.get(key)
 
     @cache
     @try_reconnect

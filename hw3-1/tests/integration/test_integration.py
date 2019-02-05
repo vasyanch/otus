@@ -31,10 +31,6 @@ class TestSuite(unittest.TestCase):
     keys_for_del = []
     key_parts = ['first_name', 'last_name', 'phone', 'birthday', 'gender', 'email']
 
-    def test_z_delete_keys(self):
-        for i in self.keys_for_del:
-            self.store.storage.delete(i)
-
     def keys_for_test(self):
         interests = ["cars", "pets", "travel", "hi-tech"]
         key_parts = [['Mikhaylov', 'Vasily'], ['vasyanch852@gmail.com', '79151950017 '], ['20180101', '1']]
@@ -51,18 +47,10 @@ class TestSuite(unittest.TestCase):
         self.store = api.Storage(host=api.config['STORE_URL'], port=api.config['STORE_PORT'],
                                  db=api.config['NUMBER_DB'], num_reconnect=api.config['NUM_RECONNECT'])
         self.keys_for_test()
-        self.store_no_connect = api.Storage(host=api.config['STORE_URL'], port=10000,  # bad port, not support by redis
-                                            db=api.config['NUMBER_DB'], num_reconnect=api.config['NUM_RECONNECT'])
 
-    def get_response(self, request):
-        return api.method_handler({"body": request, "headers": self.headers}, self.context, self.store)
-
-    def set_valid_auth(self, request):
-        if request.get("login") == api.ADMIN_LOGIN:
-            request["token"] = hashlib.sha512(datetime.now().strftime("%Y%m%d%H") + api.ADMIN_SALT).hexdigest()
-        else:
-            msg = request.get("account", "") + request.get("login", "") + api.SALT
-            request["token"] = hashlib.sha512(msg).hexdigest()
+    def tearDown(self):
+        for i in self.keys_for_del:
+            self.store.storage.delete(i)
 
     def check_store(self, con_store, method, keys_online, ints):
         ans = None
@@ -90,82 +78,6 @@ class TestSuite(unittest.TestCase):
         self.assertEqual(res_onl, 10)
         res_int = self.check_store(self.store, 'get', keys_online, ints)
         self.assertEqual(res_int, json.dumps(['hi-tech', ints[0]]))
-
-    @cases([(['Mikhaylov', 'Vasily'], ['cars', 0])])  
-    def test_no_connection_store(self, keys_online, ints):
-        res_onl = self.check_store(self.store_no_connect, 'cache_get', keys_online, ints)
-        self.assertEqual(res_onl, None)
-        res_int = self.check_store(self.store_no_connect, 'get', keys_online, ints)
-        self.assertIsInstance(res_int, redis.exceptions.ConnectionError)
-
-    @cases([(['Mikhaylov', 'Vasily'], ['cars', 0])])
-    def test_reconnect_store(self, keys_online, ints):
-        start = time.time()
-        res_int = self.check_store(self.store_no_connect, 'get', keys_online, ints)
-        time_res = time.time() - start
-        self.assertGreaterEqual(time_res, 3)
-        self.assertIsInstance(res_int, redis.exceptions.ConnectionError)
-
-    @cases([
-        {"first_name": "Mikhaylov", "last_name": "Vasily"},
-    ])
-    def test_ok_score_request_store(self, arguments):
-        request = {"account": "horns&hoofs", "login": "h&f", "method": "online_score", "arguments": arguments}
-        self.set_valid_auth(request)
-        response, code = self.get_response(request)
-        self.assertEqual(api.OK, code, arguments)
-        score = response.get("score")
-        self.assertTrue(isinstance(score, (int, float)) and score >= 0, arguments)
-        self.assertEqual(sorted(self.context["has"]), sorted(arguments.keys()))
-        self.assertEqual(score, 10)
-
-    @cases([
-        {"client_ids": [0]},
-    ])
-    def test_ok_interests_request_store(self, arguments):
-        request = {"account": "horns&hoofs", "login": "h&f", "method": "clients_interests", "arguments": arguments}
-        self.set_valid_auth(request)
-        response, code = self.get_response(request)
-        self.assertEqual(api.OK, code, arguments)
-        self.assertEqual(len(arguments["client_ids"]), len(response))
-        self.assertTrue(all(v and isinstance(v, list) and all(isinstance(i, basestring) for i in v)
-                            for v in response.values()))
-        self.assertEqual(self.context.get("nclients"), len(arguments["client_ids"]))
-        self.assertEqual(response[0], ['hi-tech', 'cars'])
-
-    @cases([
-        {"phone": "79175002040", "email": "stupnikov@otus.ru"},
-        {"phone": 79175002040, "email": "stupnikov@otus.ru"},
-        {"gender": 1, "birthday": "01.01.2000", "first_name": "a", "last_name": "b"},
-        {"gender": 0, "birthday": "01.01.2000"},
-        {"gender": 2, "birthday": "01.01.2000"},
-        {"first_name": "a", "last_name": "b"},
-        {"phone": "79175002040", "email": "stupnikov@otus.ru", "gender": 1, "birthday": "01.01.2000",
-         "first_name": "a", "last_name": "b"},
-    ])
-    def test_ok_score_request(self, arguments):
-        request = {"account": "horns&hoofs", "login": "h&f", "method": "online_score", "arguments": arguments}
-        self.set_valid_auth(request)
-        response, code = self.get_response(request)
-        self.assertEqual(api.OK, code, arguments)
-        score = response.get("score")
-        self.assertTrue(isinstance(score, (int, float)) and score >= 0, arguments)
-        self.assertEqual(sorted(self.context["has"]), sorted(arguments.keys()))
-
-    @cases([
-        {"client_ids": [1, 2, 3], "date": datetime.today().strftime("%d.%m.%Y")},
-        {"client_ids": [1, 2], "date": "19.07.2017"},
-        {"client_ids": [0]},
-    ])
-    def test_ok_interests_request(self, arguments):
-        request = {"account": "horns&hoofs", "login": "h&f", "method": "clients_interests", "arguments": arguments}
-        self.set_valid_auth(request)
-        response, code = self.get_response(request)
-        self.assertEqual(api.OK, code, arguments)
-        self.assertEqual(len(arguments["client_ids"]), len(response))
-        self.assertTrue(all(v and isinstance(v, list) and all(isinstance(i, basestring) for i in v)
-                        for v in response.values()))
-        self.assertEqual(self.context.get("nclients"), len(arguments["client_ids"]))
 
 
 if __name__ == "__main__":
