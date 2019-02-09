@@ -13,7 +13,6 @@ def create_config(path):
     config.set('Config_api', 'STORE_PORT', '6379')
     config.set('Config_api', 'STORE_URL', 'localhost')
     config.set('Config_api', 'NUMBER_DB', '0')
-    config.set('Config_api', 'NUM_RECONNECT', '10')
     config.set('Config_api', 'TIMEOUT', '2')
 
     with open(path, 'w') as config_file:

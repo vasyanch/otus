@@ -1,8 +1,9 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-
-import hashlib
 import json
+import hashlib
+import redis
+import logging
 
 
 def get_score(store, phone=None, email=None, birthday=None, gender=None, first_name=None, last_name=None):
@@ -35,5 +36,10 @@ def get_score(store, phone=None, email=None, birthday=None, gender=None, first_n
 
 
 def get_interests(store, cid):
-    r = store.get("i:%s" % cid)
+    try:
+        r = store.get("i:%s" % cid)
+    except (redis.exceptions.ConnectionError, redis.exceptions.TimeoutError) as e:
+        logging.error('Connection to redis is failed! Address: host {0}, port {1}, db {2}'.format(
+            store.host, store.port, store.db))
+        raise e
     return json.loads(r) if r else []

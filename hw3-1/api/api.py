@@ -47,7 +47,6 @@ config = {
     "STORE_PORT": 6379,
     "STORE_URL": 'localhost',
     "NUMBER_DB": 0,
-    "NUM_RECONNECT": 10,
     "TIMEOUT": 2,
 }
 
@@ -342,7 +341,7 @@ if __name__ == "__main__":
     logging.basicConfig(filename=config['LOGGING_TO_FILE'], level=config['LOGGING_LEVEL'],
                         format='[%(asctime)s] %(levelname).1s %(message)s', datefmt='%Y.%m.%d %H:%M:%S')
     MainHTTPHandler.store = Storage(host=config['STORE_URL'], port=config['STORE_PORT'], db=config['NUMBER_DB'],
-                                    num_reconnect=config['NUM_RECONNECT'], timeout=config['TIMEOUT'])
+                                    timeout=config['TIMEOUT'])
     server = HTTPServer(("localhost", config['PORT']), MainHTTPHandler)
     logging.info("Starting server at %s" % config['PORT'])
     try:

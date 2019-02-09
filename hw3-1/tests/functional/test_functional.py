@@ -4,6 +4,8 @@
 import unittest
 import hashlib
 import functools
+import fakeredis
+import json
 
 from api import api
 from datetime import datetime
@@ -29,8 +31,10 @@ class TestSuite(unittest.TestCase):
     def setUp(self):
         self.context = {}
         self.headers = {}
-        self.store = api.Storage(host=api.config['STORE_URL'], port=api.config['STORE_PORT'],
-                                 db=api.config['NUMBER_DB'], num_reconnect=api.config['NUM_RECONNECT'])
+        self.store = api.Storage()
+        self.store.storage = fakeredis.FakeStrictRedis()
+        for i in range(4):
+            self.store.storage.set('i:{}'.format(str(i)), json.dumps(['otus', 'python']))
 
     def get_response(self, request):
         return api.method_handler({"body": request, "headers": self.headers}, self.context, self.store)
@@ -142,7 +146,7 @@ class TestSuite(unittest.TestCase):
         response, code = self.get_response(request)
         self.assertEqual(api.OK, code, arguments)
         self.assertEqual(len(arguments["client_ids"]), len(response))
-        self.assertTrue(all(v and isinstance(v, list) and all(isinstance(i, str) for i in v)
+        self.assertTrue(all(v and isinstance(v, list) and all(isinstance(i, unicode) for i in v)
                             for v in response.values()))
         self.assertEqual(self.context.get("nclients"), len(arguments["client_ids"]))
 
