@@ -3,27 +3,12 @@
 
 import unittest
 import hashlib
-import functools
 import fakeredis
 import json
 
 from api import api
 from datetime import datetime
-
-
-def cases(cases):
-    def decorator(f):
-        @functools.wraps(f)
-        def wrapper(*args):
-            for c in cases:
-                new_args = args + (c if isinstance(c, tuple) else (c,))
-                try:
-                    f(*new_args)
-                except Exception as e:
-                    print '\nTest --> {0}\nthis case: ({1}) is broken!'.format(f.__name__, c)
-                    raise e
-        return wrapper
-    return decorator
+from tests.cases import cases
 
 
 class TestSuite(unittest.TestCase):
@@ -34,7 +19,7 @@ class TestSuite(unittest.TestCase):
         self.store = api.Storage()
         self.store.storage = fakeredis.FakeStrictRedis()
         for i in range(4):
-            self.store.storage.set('i:{}'.format(str(i)), json.dumps(['otus', 'python']))
+            self.store.set('i:{}'.format(str(i)), json.dumps(['otus', 'python']))
 
     def get_response(self, request):
         return api.method_handler({"body": request, "headers": self.headers}, self.context, self.store)

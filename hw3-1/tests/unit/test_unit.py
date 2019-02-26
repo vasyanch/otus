@@ -1,24 +1,9 @@
 import datetime
-import functools
 import unittest
 from api import api
 
 from datetime import datetime
-
-
-def cases(cases):
-    def decorator(f):
-        @functools.wraps(f)
-        def wrapper(*args):
-            for c in cases:
-                new_args = args + (c if isinstance(c, tuple) else (c,))
-                try:
-                    f(*new_args)
-                except Exception as e:
-                    print '\nTest --> {0}\nthis case: ({1}) is broken!'.format(f.__name__, c)
-                    raise e
-        return wrapper
-    return decorator
+from tests.cases import cases
 
 
 def check_field(cls_field, value):

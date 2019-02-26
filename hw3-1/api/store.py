@@ -53,6 +53,10 @@ class Storage(object):
     def get(self, key):
         return self.storage.get(key)
 
+    @reconnect(num_reconnect)
+    def set(self, key, value):
+        return self.storage.set(key, value)
+
     @cache
     @reconnect(num_reconnect)
     def cache_get(self, key):
