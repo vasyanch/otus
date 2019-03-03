@@ -4,7 +4,7 @@ import unittest
 import json
 import hashlib
 import redis
-
+import os
 
 from api import api
 from tests.cases import cases
@@ -20,6 +20,18 @@ class MyMock:
         raise self.side_effect
 
 
+def parse_redis_host():
+    redis_host = os.getenv('REDIS_HOST_API')
+    if redis_host:
+        store_url, store_port, number_db = redis_host.split(":")
+        return dict(STORE_URL=store_url, STORE_PORT=store_port, NUMBER_DB=number_db)
+
+
+STORE_HOST = parse_redis_host()
+
+
+@unittest.skipIf(not STORE_HOST, "REDIS_HOST_API is not in os.environ. "
+                                 "You should define REDIS_HOST_API  environment variable for integration tests.")
 class TestSuite(unittest.TestCase):
     keys_for_del = []
     key_parts = ['first_name', 'last_name', 'phone', 'birthday', 'gender', 'email']
@@ -35,8 +47,8 @@ class TestSuite(unittest.TestCase):
             self.store.set(key_online, 10)
 
     def setUp(self):
-        self.store = api.Storage(host=api.config['STORE_URL'], port=api.config['STORE_PORT'],
-                                 db=api.config['NUMBER_DB'])
+        self.store = api.Storage(host=STORE_HOST['STORE_URL'], port=STORE_HOST['STORE_PORT'],
+                                 db=STORE_HOST['NUMBER_DB'])
 
         self.fake_store = api.Storage(host='___')
         self.keys_for_test()
@@ -62,18 +74,11 @@ class TestSuite(unittest.TestCase):
     def test_no_connection_store(self,  keys_online, ints):
         res_onl = self.fake_store.cache_get("uid:" + hashlib.md5("".join(keys_online)).hexdigest())
         self.assertEqual(res_onl, None)
-        try:
-            res_int = self.fake_store.get('i:{}'.format(str(ints[1])))
-        except redis.exceptions.ConnectionError:
-            res_int = redis.exceptions.ConnectionError()
-        self.assertIsInstance(res_int, redis.exceptions.ConnectionError)
+        self.assertRaises(redis.exceptions.ConnectionError, self.fake_store.get, 'i:{}'.format(str(ints[1])))
 
     def test_reconnect(self):
         self.fake_store.storage.get = MyMock(side_effect=redis.exceptions.ConnectionError())
-        try:
-            self.fake_store.get('i')
-        except redis.exceptions.ConnectionError:
-            pass
+        self.assertRaises(redis.exceptions.ConnectionError, self.fake_store.get, 'i')
         self.assertEqual(self.fake_store.storage.get.call_count, self.fake_store.num_reconnect)
 
 

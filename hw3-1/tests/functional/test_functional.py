@@ -1,25 +1,43 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-
 import unittest
 import hashlib
-import fakeredis
 import json
+import os
 
 from api import api
 from datetime import datetime
 from tests.cases import cases
 
 
+def parse_redis_host():
+    redis_host = os.getenv('REDIS_HOST_API')
+    if redis_host:
+        store_url, store_port, number_db = redis_host.split(":")
+        return dict(STORE_URL=store_url, STORE_PORT=store_port, NUMBER_DB=number_db)
+
+
+STORE_HOST = parse_redis_host()
+
+
 class TestSuite(unittest.TestCase):
+    keys_for_del = []
 
     def setUp(self):
         self.context = {}
         self.headers = {}
-        self.store = api.Storage()
-        self.store.storage = fakeredis.FakeStrictRedis()
-        for i in range(4):
-            self.store.set('i:{}'.format(str(i)), json.dumps(['otus', 'python']))
+        if STORE_HOST:
+            self.store = api.Storage(host=STORE_HOST['STORE_URL'], port=STORE_HOST['STORE_PORT'],
+                                     db=STORE_HOST['NUMBER_DB'])
+            for i in range(4):
+                self.store.set('i:{}'.format(str(i)), json.dumps(['otus', 'python']))
+                self.keys_for_del.append('i:{}'.format(str(i)))
+        else:
+            self.store = api.Storage()
+
+    def tearDown(self):
+        for i in self.keys_for_del:
+            self.store.storage.delete(i)
 
     def get_response(self, request):
         return api.method_handler({"body": request, "headers": self.headers}, self.context, self.store)
@@ -120,6 +138,8 @@ class TestSuite(unittest.TestCase):
         self.assertTrue(isinstance(score, (int, float)) and score >= 0, arguments)
         self.assertEqual(sorted(self.context["has"]), sorted(arguments.keys()))
 
+    @unittest.skipIf(not STORE_HOST, "REDIS_HOST_API is not in os.environ. You should define REDIS_HOST_API "
+                                     "environment variable for functional test: test_ok_interests_request.")
     @cases([
         {"client_ids": [1, 2, 3], "date": datetime.today().strftime("%d.%m.%Y")},
         {"client_ids": [1, 2], "date": "19.07.2017"},
