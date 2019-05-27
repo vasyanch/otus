@@ -8,7 +8,7 @@ response
 **.ipynb_checkpoints
 task
 test_config_api
-venv
+**venv
 hw3/requests
 hw3-1/requests
 hw3-1/test_fields.py
@@ -21,4 +21,8 @@ hw5/django-polls
 hw5/hardcode
 hw5/mysite/db.sqlite3
 !hw7/homework.ipynb
+**task/
+hw9/data/
+hw9/*_memcached
+
 
