@@ -1,4 +1,3 @@
-#  time: 1147 for one file, 3087 for three file
 import memcache
 import time
 import os
@@ -13,19 +12,11 @@ from optparse import OptionParser
 # pip install protobuf
 import appsinstalled_pb2
 # pip install python-memcached
+from timer import timer
 
 NORMAL_ERR_RATE = 0.01
 AppsInstalled = collections.namedtuple("AppsInstalled", ["dev_type", "dev_id", "lat", "lon", "apps"])
 
-
-def timer(fun):
-    def wrapper(*args, **kwargs):
-        start = time.time()
-        fun(*args, **kwargs)
-        time_fun = time.time() - start
-        print('time %s %s' % (fun.__name__, time_fun))
-    return wrapper
-    
 
 def dot_rename(path):
     head, fn = os.path.split(path)

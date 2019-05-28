@@ -1,4 +1,3 @@
-# time:   for three, 644 for one
 import threading
 import multiprocessing
 import queue
@@ -13,26 +12,17 @@ import collections
 import appsinstalled_pb2
 from optparse import OptionParser
 from functools import partial
+from timer import timer
 
 
 NORMAL_ERR_RATE = 0.01
 AppsInstalled = collections.namedtuple("AppsInstalled", ["dev_type", "dev_id", "lat", "lon", "apps"])
 
-MAX_THREADS = 1
+MAX_THREADS = 2
 NUM_RECONNECT_MEMC = 3
 TIMEOUT_MEMC = 1
-WAIT_TIME_MEMC = 3
-QUEUE_TIMEOUT = 0.2
-
-
-def timer(fun):
-    def wrapper(*args, **kwargs):
-        start = time.time()
-        fun(*args, **kwargs)
-        time_fun = time.time() - start
-        print('time %s %s' % (fun.__name__, time_fun))
-
-    return wrapper
+WAIT_TIME_MEMC = 2
+QUEUE_TIMEOUT = 0.3
 
 
 def dot_rename(path):
@@ -53,16 +43,16 @@ def insert_appsinstalled(memc_queue, memc_addr, appsinstalled, dry_run=False):
             logging.debug("%s - %s -> %s" % (memc_addr, key, str(ua).replace("\n", " ")))
         else:
             try:
-                memc = memc_queue.get(timeout=QUEUE_TIMEOUT)
+                memc_connect= memc_queue.get(timeout=QUEUE_TIMEOUT)
             except queue.Empty:
-                memc = memcache.Client([memc_addr], socket_timeout=TIMEOUT_MEMC)
+                memc_connect = memcache.Client([memc_addr], socket_timeout=TIMEOUT_MEMC)
             success = False
             for i in range(NUM_RECONNECT_MEMC):
-                success = memc.set(key, packed)
+                success = memc_connect.set(key, packed)
                 if success:
                     break
                 time.sleep(WAIT_TIME_MEMC)
-            memc_queue.put(memc)
+            memc_queue.put(memc_connect)
             return success
     except Exception as e:
         logging.exception("Cannot write to memc %s: %s" % (memc_addr, e))
@@ -91,7 +81,7 @@ def parse_appsinstalled(line):
 
 
 def insert_handler(insert_queue, result_queue):
-    processed = errors = 0
+    tprocessed = terrors = 0
     while True:
         try:
             task = insert_queue.get(timeout=QUEUE_TIMEOUT)
@@ -99,11 +89,10 @@ def insert_handler(insert_queue, result_queue):
             break
         result = insert_appsinstalled(*task)
         if result:
-            processed += 1
+            tprocessed += 1
         else:
-            errors += 1
-    result_queue.put((processed, errors))
-    return
+            terrors += 1
+    result_queue.put((tprocessed, terrors))
 
 
 def file_handler(fn, options):
@@ -143,7 +132,7 @@ def file_handler(fn, options):
                 logging.error("Unknow device type: %s" % appsinstalled.dev_type)
                 continue
             insert_queue.put((memc_pool[memc_addr], memc_addr, appsinstalled, options.dry))
-            #ok = insert_appsinstalled(memc_pool[memc_addr], memc_addr, appsinstalled, options.dry)
+
     for thread in threads:
         if thread.is_alive():
             thread.join()
@@ -168,9 +157,8 @@ def file_handler(fn, options):
 def main(options):
         fn_list = list(glob.iglob(options.pattern))
         fn_list.sort()
-        print(fn_list)
         num_proc = multiprocessing.cpu_count()
-        processes_pool = multiprocessing.Pool(processes=2)
+        processes_pool = multiprocessing.Pool(processes=num_proc)
         file_handler_options = partial(file_handler, options=options)
         for fn in processes_pool.imap(file_handler_options, fn_list):
             dot_rename(fn)

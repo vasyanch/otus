@@ -8,6 +8,7 @@ response
 **.ipynb_checkpoints
 task
 test_config_api
+**env
 **venv
 hw3/requests
 hw3-1/requests
@@ -24,5 +25,5 @@ hw5/mysite/db.sqlite3
 **task/
 hw9/data/
 hw9/*_memcached
-
+hw9/result
 
