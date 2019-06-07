@@ -109,8 +109,8 @@ def get_paths(root_dir, title):
 async def main(directory, interval):
     num_loop = 1
     cache = set()
-    logging.info('Loop {}'.format(num_loop))
     while True:
+        logging.info('Loop {}'.format(num_loop))
         list_news = get_list_news_link(URL)
         list_news = check_new_links(cache, list_news)
         if list_news:
