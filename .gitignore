@@ -26,4 +26,10 @@ hw5/mysite/db.sqlite3
 hw9/data/
 hw9/*_memcached
 hw9/result
+hw11/tutorial*
+hw11/questions
+hw11/comments
+hw11/find_link.py
+hw11/content
+
 
