@@ -43,23 +43,18 @@ def serialization_data(appsinstalled):
     return Serialized_data(ua, key, packed)
 
 
-def insert_appsinstalled(memc_queue, memc_addr, serialized_data, dry_run=False):
+def insert_appsinstalled(memc_connect, memc_addr, serialized_data, dry_run=False):
     try:
         if dry_run:
             logging.debug("%s - %s -> %s" %
                           (memc_addr, serialized_data.key, str(serialized_data.data).replace("\n", " ")))
         else:
-            try:
-                memc_connect = memc_queue.get(timeout=0.001)
-            except queue.Empty:
-                memc_connect = memcache.Client([memc_addr], socket_timeout=TIMEOUT_MEMC)
             success = False
             for i in range(NUM_RECONNECT_MEMC):
                 success = memc_connect.set(serialized_data.key, serialized_data.packed_data)
                 if success:
                     break
                 time.sleep(WAIT_FACTOR * ((i + 1) ** i))
-            memc_queue.put(memc_connect)
             return success
     except Exception as e:
         logging.exception("Cannot write to memc %s: %s" % (memc_addr, e))
@@ -87,14 +82,17 @@ def parse_appsinstalled(line):
     return AppsInstalled(dev_type, dev_id, lat, lon, apps)
 
 
-def insert_handler(insert_queue, result_queue):
+def insert_handler(device_memc, insert_queue, result_queue):
     tprocessed = terrors = 0
+    memc_dict = {}
+    for key in device_memc:
+        memc_dict[device_memc.get(key)] = memcache.Client([device_memc.get(key)], socket_timeout=TIMEOUT_MEMC)
     while True:
         try:
-            task = insert_queue.get(timeout=QUEUE_TIMEOUT)
+            memc_addr, serialized_data, dry = insert_queue.get(timeout=QUEUE_TIMEOUT)
         except queue.Empty:
             break
-        result = insert_appsinstalled(*task)
+        result = insert_appsinstalled(memc_dict[memc_addr], memc_addr, serialized_data, dry)
         if result:
             tprocessed += 1
         else:
@@ -110,13 +108,12 @@ def file_handler(fn, options):
         "dvid": options.dvid,
     }
 
-    memc_pool = collections.defaultdict(queue.Queue)
     insert_queue = queue.Queue(maxsize=10**6)
     result_queue = queue.Queue()
 
     threads = []
     for i in range(MAX_THREADS):
-        t = threading.Thread(target=insert_handler, args=(insert_queue, result_queue))
+        t = threading.Thread(target=insert_handler, args=(device_memc, insert_queue, result_queue))
         t.daemon = True
         threads.append(t)
     for t in threads:
@@ -125,9 +122,7 @@ def file_handler(fn, options):
     processed = errors = 0
     logging.info('Processing %s' % fn)
     with gzip.open(fn) as fd:
-        n = 0
         for line in fd:
-            n += 1
             line = line.strip()
             if not line:
                 continue
@@ -141,7 +136,7 @@ def file_handler(fn, options):
                 logging.error("Unknow device type: %s" % appsinstalled.dev_type)
                 continue
             serialized_data = serialization_data(appsinstalled)
-            insert_queue.put((memc_pool[memc_addr], memc_addr, serialized_data, options.dry))
+            insert_queue.put((memc_addr, serialized_data, options.dry))
 
     for thread in threads:
         if thread.is_alive():
