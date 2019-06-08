@@ -17,12 +17,14 @@ from timer import timer
 
 NORMAL_ERR_RATE = 0.01
 AppsInstalled = collections.namedtuple("AppsInstalled", ["dev_type", "dev_id", "lat", "lon", "apps"])
+Serialized_data = collections.namedtuple('Serialized_data', 'data key packed_data')
 
-MAX_THREADS = 2
+
+MAX_THREADS = 4
 NUM_RECONNECT_MEMC = 3
 TIMEOUT_MEMC = 1
-WAIT_TIME_MEMC = 2
-QUEUE_TIMEOUT = 0.3
+WAIT_FACTOR = 0.1
+QUEUE_TIMEOUT = 0.5
 
 
 def dot_rename(path):
@@ -31,27 +33,32 @@ def dot_rename(path):
     os.rename(path, os.path.join(head, "." + fn))
 
 
-def insert_appsinstalled(memc_queue, memc_addr, appsinstalled, dry_run=False):
+def serialization_data(appsinstalled):
     ua = appsinstalled_pb2.UserApps()
     ua.lat = appsinstalled.lat
     ua.lon = appsinstalled.lon
     key = "%s:%s" % (appsinstalled.dev_type, appsinstalled.dev_id)
     ua.apps.extend(appsinstalled.apps)
     packed = ua.SerializeToString()
+    return Serialized_data(ua, key, packed)
+
+
+def insert_appsinstalled(memc_queue, memc_addr, serialized_data, dry_run=False):
     try:
         if dry_run:
-            logging.debug("%s - %s -> %s" % (memc_addr, key, str(ua).replace("\n", " ")))
+            logging.debug("%s - %s -> %s" %
+                          (memc_addr, serialized_data.key, str(serialized_data.data).replace("\n", " ")))
         else:
             try:
-                memc_connect= memc_queue.get(timeout=QUEUE_TIMEOUT)
+                memc_connect = memc_queue.get(timeout=0.001)
             except queue.Empty:
                 memc_connect = memcache.Client([memc_addr], socket_timeout=TIMEOUT_MEMC)
             success = False
             for i in range(NUM_RECONNECT_MEMC):
-                success = memc_connect.set(key, packed)
+                success = memc_connect.set(serialized_data.key, serialized_data.packed_data)
                 if success:
                     break
-                time.sleep(WAIT_TIME_MEMC)
+                time.sleep(WAIT_FACTOR * ((i + 1) ** i))
             memc_queue.put(memc_connect)
             return success
     except Exception as e:
@@ -104,7 +111,7 @@ def file_handler(fn, options):
     }
 
     memc_pool = collections.defaultdict(queue.Queue)
-    insert_queue = queue.Queue()
+    insert_queue = queue.Queue(maxsize=10**6)
     result_queue = queue.Queue()
 
     threads = []
@@ -118,7 +125,9 @@ def file_handler(fn, options):
     processed = errors = 0
     logging.info('Processing %s' % fn)
     with gzip.open(fn) as fd:
+        n = 0
         for line in fd:
+            n += 1
             line = line.strip()
             if not line:
                 continue
@@ -131,11 +140,13 @@ def file_handler(fn, options):
                 errors += 1
                 logging.error("Unknow device type: %s" % appsinstalled.dev_type)
                 continue
-            insert_queue.put((memc_pool[memc_addr], memc_addr, appsinstalled, options.dry))
+            serialized_data = serialization_data(appsinstalled)
+            insert_queue.put((memc_pool[memc_addr], memc_addr, serialized_data, options.dry))
 
     for thread in threads:
         if thread.is_alive():
             thread.join()
+
     while True:
         try:
             tprocessed, terrors = result_queue.get(timeout=QUEUE_TIMEOUT)
