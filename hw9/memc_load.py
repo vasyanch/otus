@@ -1,5 +1,4 @@
 import memcache
-import time
 import os
 import gzip
 import sys

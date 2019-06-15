@@ -14,17 +14,14 @@ from optparse import OptionParser
 from functools import partial
 from timer import timer
 
-
 NORMAL_ERR_RATE = 0.01
 AppsInstalled = collections.namedtuple("AppsInstalled", ["dev_type", "dev_id", "lat", "lon", "apps"])
 Serialized_data = collections.namedtuple('Serialized_data', 'data key packed_data')
 
-
-MAX_THREADS = 4
 NUM_RECONNECT_MEMC = 3
 TIMEOUT_MEMC = 1
 WAIT_FACTOR = 0.1
-QUEUE_TIMEOUT = 0.5
+QUEUE_TIMEOUT = 1
 
 
 def dot_rename(path):
@@ -43,23 +40,16 @@ def serialization_data(appsinstalled):
     return Serialized_data(ua, key, packed)
 
 
-def insert_appsinstalled(memc_connect, memc_addr, serialized_data, dry_run=False):
-    try:
-        if dry_run:
-            logging.debug("%s - %s -> %s" %
-                          (memc_addr, serialized_data.key, str(serialized_data.data).replace("\n", " ")))
-        else:
-            success = False
-            for i in range(NUM_RECONNECT_MEMC):
-                success = memc_connect.set(serialized_data.key, serialized_data.packed_data)
-                if success:
-                    break
-                time.sleep(WAIT_FACTOR * ((i + 1) ** i))
-            return success
-    except Exception as e:
-        logging.exception("Cannot write to memc %s: %s" % (memc_addr, e))
-        return False
-    return True
+def insert_appsinstalled(memc_connect, values_for_insert):
+    list_of_fails = [1] * 100
+    for i in range(NUM_RECONNECT_MEMC):
+        list_of_fails = memc_connect.set_multi(values_for_insert)
+        if len(list_of_fails) == 0:
+            break
+        time.sleep(WAIT_FACTOR * ((i + 1) ** i))
+        values_for_insert = {key: values_for_insert[key] for key in list_of_fails}
+    dict_not_insert = {key: values_for_insert[key] for key in list_of_fails}
+    return dict_not_insert
 
 
 def parse_appsinstalled(line):
@@ -82,21 +72,30 @@ def parse_appsinstalled(line):
     return AppsInstalled(dev_type, dev_id, lat, lon, apps)
 
 
-def insert_handler(device_memc, insert_queue, result_queue):
+def insert_handler(memc_addr, insert_queue, result_queue):
     tprocessed = terrors = 0
-    memc_dict = {}
-    for key in device_memc:
-        memc_dict[device_memc.get(key)] = memcache.Client([device_memc.get(key)], socket_timeout=TIMEOUT_MEMC)
+    memc_connect = memcache.Client([memc_addr], socket_timeout=TIMEOUT_MEMC)
+    values_for_insert = {}
     while True:
         try:
-            memc_addr, serialized_data, dry = insert_queue.get(timeout=QUEUE_TIMEOUT)
+            serialized_data = insert_queue.get(timeout=QUEUE_TIMEOUT)
+            values_for_insert[serialized_data.key] = serialized_data.packed_data
+            if len(values_for_insert) == 500:
+                result = insert_appsinstalled(memc_connect, values_for_insert)
+                values_for_insert = {}
+            else:
+                continue
         except queue.Empty:
-            break
-        result = insert_appsinstalled(memc_dict[memc_addr], memc_addr, serialized_data, dry)
+            if not values_for_insert:
+                break
+            result = insert_appsinstalled(memc_connect, values_for_insert)
+            values_for_insert = {}
         if result:
-            tprocessed += 1
+            tprocessed += 100 - len(result)
+            terrors += len(result)
+            logging.error("Cannot write to memc %s, %s strings" % (memc_addr, len(result)))
         else:
-            terrors += 1
+            tprocessed += 100
     result_queue.put((tprocessed, terrors))
 
 
@@ -108,12 +107,18 @@ def file_handler(fn, options):
         "dvid": options.dvid,
     }
 
-    insert_queue = queue.Queue(maxsize=10**6)
+    insert_queues = {
+        "idfa": queue.Queue(),
+        "gaid": queue.Queue(),
+        "adid": queue.Queue(),
+        "dvid": queue.Queue(),
+    }
+
     result_queue = queue.Queue()
 
     threads = []
-    for i in range(MAX_THREADS):
-        t = threading.Thread(target=insert_handler, args=(device_memc, insert_queue, result_queue))
+    for key in device_memc:
+        t = threading.Thread(target=insert_handler, args=(device_memc[key], insert_queues[key], result_queue))
         t.daemon = True
         threads.append(t)
     for t in threads:
@@ -136,7 +141,11 @@ def file_handler(fn, options):
                 logging.error("Unknow device type: %s" % appsinstalled.dev_type)
                 continue
             serialized_data = serialization_data(appsinstalled)
-            insert_queue.put((memc_addr, serialized_data, options.dry))
+            if options.dry:
+                logging.debug("%s - %s -> %s" %
+                              (memc_addr, serialized_data.key, str(serialized_data.data).replace("\n", " ")))
+            else:
+                insert_queues[appsinstalled.dev_type].put(serialized_data)
 
     for thread in threads:
         if thread.is_alive():
@@ -161,13 +170,13 @@ def file_handler(fn, options):
 
 @timer
 def main(options):
-        fn_list = list(glob.iglob(options.pattern))
-        fn_list.sort()
-        num_proc = multiprocessing.cpu_count()
-        processes_pool = multiprocessing.Pool(processes=num_proc)
-        file_handler_options = partial(file_handler, options=options)
-        for fn in processes_pool.imap(file_handler_options, fn_list):
-            dot_rename(fn)
+    fn_list = list(glob.iglob(options.pattern))
+    fn_list.sort()
+    num_proc = multiprocessing.cpu_count()
+    processes_pool = multiprocessing.Pool(processes=num_proc)
+    file_handler_options = partial(file_handler, options=options)
+    for fn in processes_pool.imap(file_handler_options, fn_list):
+        dot_rename(fn)
 
 
 def prototest():
