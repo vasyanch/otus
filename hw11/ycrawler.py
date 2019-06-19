@@ -68,7 +68,7 @@ async def save_text(text, path_file):
     async with aiofiles.open(path_file, 'wb') as file:
         await file.write(text)
 
-GIT 
+
 async def download_page(url, path_file, session):
     text = await get_page(url, session)
     if not text:
