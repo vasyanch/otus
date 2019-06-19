@@ -1,5 +1,6 @@
 import asyncio
 import aiohttp
+import aiofiles
 import logging
 import os
 import requests
@@ -13,6 +14,35 @@ File_for_download = namedtuple('file', 'url path')
 
 URL = 'https://news.ycombinator.com/'
 MAX_RETRIES = 3
+
+
+class Cache(list):
+    def __init__(self, maxsize=0, *args, **kwargs):
+        super(Cache, self).__init__(*args, **kwargs)
+        self.maxsize = maxsize
+
+    def append(self, *args, **kwargs):
+        if self.maxsize:
+            if self.__len__() < self.maxsize:
+                super(Cache, self).append(*args, **kwargs)
+            else:
+                self.pop(0)
+                super(Cache, self).append(*args, **kwargs)
+        else:
+            super(Cache, self).append(*args, **kwargs)
+
+    def in_cache(self, items):
+        """
+        :param items: collections of item
+        :return: list of items not in self
+        """
+        ans = []
+        for i in items:
+            if i in self:
+                continue
+            else:
+                ans.append(i)
+        return ans
 
 
 async def get_page(url, session):
@@ -34,17 +64,17 @@ async def get_page(url, session):
                 return
 
 
-def save_text(text, path_file):
-    with open(path_file, 'wb') as file:
-        file.write(text)
+async def save_text(text, path_file):
+    async with aiofiles.open(path_file, 'wb') as file:
+        await file.write(text)
 
-
+GIT 
 async def download_page(url, path_file, session):
     text = await get_page(url, session)
     if not text:
         return
     try:
-        save_text(text, path_file)
+        await save_text(text, path_file)
     except Exception:
         logging.exception('ERROR! Error in func save_text, url: {}'.format(url))
     else:
@@ -98,6 +128,7 @@ def check_new_links(cache, list_news):
 
 
 def get_paths(root_dir, title):
+    title = title.split('?')[0]
     title = title.replace('/', '_')
     news_path = os.path.join(root_dir, title)
     os.mkdir(news_path)
@@ -107,40 +138,41 @@ def get_paths(root_dir, title):
 
 
 async def main(directory, interval):
-    num_loop = 1
-    cache = set()
+    num_loop = 0
+    cache = Cache(maxsize=150)
     while True:
+        num_loop += 1
         logging.info('Loop {}'.format(num_loop))
         list_news = get_list_news_link(URL)
-        list_news = check_new_links(cache, list_news)
-        if list_news:
-            [cache.add(n) for n in list_news]
-            raw_tasks = []
-            for one_news in list_news:
-                paths = get_paths(directory, one_news.title)
-                raw_tasks.append(File_for_download(one_news.url, os.path.join(paths.news, one_news.title)))
-                list_links_from_comments = get_list_comments_link(os.path.join(URL, one_news.url_comments))
-                for link in list_links_from_comments:
-                    file_name = link[8:].replace('/', '_')
-                    raw_tasks.append(File_for_download(link, os.path.join(paths.comments, file_name)))
-            async with aiohttp.ClientSession() as session:
-                tasks = [asyncio.create_task(download_page(file.url, file.path, session)) for file in raw_tasks]
-                await asyncio.wait(tasks)
-
-        num_loop += 1
-        await asyncio.sleep(interval)
+        list_news = cache.in_cache(list_news)
+        if not list_news:
+            await asyncio.sleep(interval)
+            continue
+        [cache.append(new_link) for new_link in list_news]
+        raw_tasks = []
+        for one_news in list_news:
+            paths = get_paths(directory, one_news.title)
+            raw_tasks.append(File_for_download(one_news.url, os.path.join(paths.news, one_news.title)))
+            list_links_from_comments = get_list_comments_link(os.path.join(URL, one_news.url_comments))
+            for link in list_links_from_comments:
+                file_name = link[8:].replace('/', '_')
+                file_name = file_name.split('?')[0]
+                raw_tasks.append(File_for_download(link, os.path.join(paths.comments, file_name)))
+        timeout = aiohttp.ClientTimeout(total=interval)
+        async with aiohttp.ClientSession(connector=aiohttp.TCPConnector(limit=30), timeout=timeout) as session:
+            tasks = [asyncio.create_task(download_page(file.url, file.path, session)) for file in raw_tasks]
+            await asyncio.sleep(interval)
+            await asyncio.wait(tasks)
 
 
 try:
     logging.basicConfig(format='[%(asctime)s] %(levelname).1s %(message)s', level='INFO', filename=None)
     options = OptionParser()
     options.add_option('-d', '--dir', default=os.path.join(os.path.dirname(os.path.abspath(__file__)), 'content'))
-    options.add_option('-i', '--interval', default=20)
-    (opt, args) = options.parse_args()
+    options.add_option('-i', '--interval', default=60)
+    (opt, arg) = options.parse_args()
     if not os.path.exists(opt.dir):
         os.makedirs(opt.dir)
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(main(opt.dir, opt.interval))
-    loop.close()
+    asyncio.run(main(opt.dir, opt.interval))
 except KeyboardInterrupt:
     logging.error('Ycrawler is terminated! Downloaded pages in {}'.format(opt.dir))
